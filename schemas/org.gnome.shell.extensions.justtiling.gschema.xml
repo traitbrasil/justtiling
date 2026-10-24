@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.justtiling" path="/org/gnome/shell/extensions/justtiling/">
+    <key name="preferences-version" type="i">
+      <default>0</default><range min="0" max="1"/>
+      <summary>Internal version of Just Tiling preference migrations</summary>
+    </key>
+    <key name="tiling-enabled" type="b">
+      <default>true</default>
+      <summary>Manage windows while the extension is loaded</summary>
+    </key>
+    <key name="debug" type="b">
+      <default>false</default>
+      <summary>Log window metadata and process lineage without titles, arguments or environment</summary>
+    </key>
+    <key name="system-shortcut-backup" type="s">
+      <default>'[]'</default><summary>Recovery journal for temporarily replaced system shortcuts</summary>
+    </key>
+    <key name="swap-left" type="as"><default>['&lt;Super&gt;Left']</default>
+      <summary>Swap focused tile left</summary></key>
+    <key name="swap-right" type="as"><default>['&lt;Super&gt;Right']</default>
+      <summary>Swap focused tile right</summary></key>
+    <key name="swap-up" type="as"><default>['&lt;Super&gt;Up']</default>
+      <summary>Swap focused tile up</summary></key>
+    <key name="swap-down" type="as"><default>['&lt;Super&gt;Down']</default>
+      <summary>Swap focused tile down</summary></key>
+    <key name="cycle-focus" type="as">
+      <default>['&lt;Super&gt;c']</default>
+      <summary>Cycle focus through tiled windows on the current workspace</summary>
+    </key>
+    <key name="new-window-side" type="s">
+      <default>'left'</default>
+      <choices><choice value="left"/><choice value="right"/></choices>
+      <summary>Insert new windows before or after the active tile</summary>
+    </key>
+    <key name="preserve-focused-window" type="b">
+      <default>true</default>
+      <summary>Preserve the focused window size when inserting new windows if space allows</summary>
+    </key>
+    <key name="learn-layouts" type="b">
+      <default>true</default>
+      <summary>Learn application layout preferences from manual rearrangements</summary>
+    </key>
+    <key name="learned-layouts" type="s">
+      <default>'{"version":1,"apps":{}}'</default>
+      <summary>Local normalized application layout preferences</summary>
+    </key>
+    <key name="focus-border" type="b">
+      <default>true</default>
+      <summary>Highlight the focused managed window using the GNOME accent color</summary>
+    </key>
+    <key name="drag-swap" type="b">
+      <default>true</default>
+      <summary>Swap tiled windows when a mouse drag is released over another tile</summary>
+    </key>
+    <key name="resize-splits" type="b">
+      <default>true</default>
+      <summary>Apply shared-border resize to the split tree when the native drag ends</summary>
+    </key>
+    <key name="floating-apps" type="as">
+      <default>['app-id:discord.desktop', 'gtk-app-id:org.gnome.Calculator', 'app-id:spotify.desktop', 'gtk-app-id:com.canonical.Myna.Config', 'gtk-app-id:org.gnome.Extensions', 'app-id:org.gnome.Settings.desktop', 'wm-class:nm-connection-editor', 'sandbox-id:snap-store_snap-store', 'wm-class:rambox', 'app-id:rustdesk.desktop', 'app-id:openlogi.desktop', 'gtk-app-id:org.gnome.Resources', 'wm-class:update-manager', 'sandbox-id:firmware-updater_firmware-updater-app', 'wm-class:nvidia-settings', 'wm-class:gnome-language-selector', 'gtk-app-id:org.gnome.Characters', 'gtk-app-id:org.gnome.seahorse.Application', 'gtk-app-id:org.gnome.font-viewer', 'gtk-app-id:org.gnome.baobab', 'gtk-app-id:org.gnome.DiskUtility', 'gtk-app-id:org.gnome.Logs', 'gtk-app-id:org.gnome.Sysprof', 'gtk-app-id:org.gnome.Yelp', 'sandbox-id:io.github.kolunmi.Bazaar', 'app-id:org.openrgb.OpenRGB.desktop', 'wm-class:vlc', 'sandbox-id:io.github.nokse22.teleprompter', 'app-id:vicinae.desktop', 'app-id:overgrive.desktop']</default>
+      <summary>Exact namespaced application IDs that should float by default</summary>
+    </key>
+    <key name="toggle-tiling" type="as">
+      <default>['&lt;Super&gt;t']</default>
+      <summary>Toggle auto-tiling without unloading the extension</summary>
+    </key>
+    <key name="toggle-floating" type="as">
+      <default>['&lt;Super&gt;f']</default>
+      <summary>Toggle the focused window between tiled and floating</summary>
+    </key>
+    <key name="inner-gap" type="i">
+      <default>15</default><range min="0" max="64"/>
+      <summary>Gap between tiles in layout coordinates</summary>
+    </key>
+    <key name="outer-gap" type="i">
+      <default>15</default><range min="0" max="64"/>
+      <summary>Gap at the work area edges</summary>
+    </key>
+  </schema>
+</schemalist>

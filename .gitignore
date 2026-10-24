@@ -1,0 +1,28 @@
+# Generated packages and local diagnostics
+/dist/
+/output/
+/tmp/
+/backups/
+*.log
+/schemas/gschemas.compiled
+__pycache__/
+*.py[cod]
+
+# Local credentials and development environment
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+/.aws/
+/.codex/
+/.agents/
+
+# Local preference exports (never ship user settings)
+*.dconf
+trait-justtiling-preferencias.ini
+preferences-backup*
+learned-layouts*.json

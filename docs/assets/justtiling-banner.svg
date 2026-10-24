@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title description">
+  <title id="title">Trait JustTiling — Room to focus.</title>
+  <desc id="description">A dark banner with a teal tiled-window illustration. This is a layout illustration, not a screenshot.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#101e26"/><stop offset="1" stop-color="#142f34"/></linearGradient>
+    <linearGradient id="tile" x2="0" y2="1"><stop stop-color="#214048"/><stop offset="1" stop-color="#192c34"/></linearGradient>
+  </defs>
+  <rect width="1280" height="420" rx="24" fill="url(#background)"/>
+  <g font-family="DejaVu Sans, sans-serif">
+    <g transform="translate(64 58)">
+      <rect width="42" height="42" rx="11" fill="#60dfc3"/>
+      <path d="M11 11h9v20h-9zm13 0h7v8h-7zm0 12h7v8h-7z" fill="#102a30"/>
+      <text x="57" y="29" fill="#edf8f6" font-size="24" font-weight="700">Trait JustTiling</text>
+    </g>
+    <text x="64" y="184" fill="#f4fbfa" font-size="54" font-weight="700">Room to focus.</text>
+    <text x="66" y="230" fill="#c2d8d8" font-size="21">Automatic window tiling for GNOME.</text>
+    <text x="66" y="263" fill="#c2d8d8" font-size="21">A workspace that moves with you.</text>
+    <rect x="64" y="315" width="273" height="37" rx="18" fill="#26434a"/>
+    <text x="85" y="340" fill="#d5efea" font-size="15">GNOME 51  /  Open source</text>
+    <g transform="translate(663 48)">
+      <rect width="553" height="300" rx="17" fill="#101d24" stroke="#45636a"/>
+      <rect x="16" y="16" width="307" height="268" rx="10" fill="url(#tile)" stroke="#60dfc3" stroke-width="3"/>
+      <path d="M34 50h271" stroke="#395c63"/>
+      <circle cx="36" cy="34" r="4" fill="#60dfc3"/>
+      <circle cx="50" cy="34" r="4" fill="#587880"/>
+      <path d="M40 91h125m-125 20h226m-226 17h198" stroke="#6b9097" stroke-width="7" stroke-linecap="round" opacity=".65"/>
+      <rect x="40" y="160" width="258" height="100" rx="6" fill="#12262f"/>
+      <path d="m62 212 35-23 39 28 42-37 46 32 49-24" stroke="#60dfc3" stroke-width="3" fill="none"/>
+      <rect x="338" y="16" width="199" height="127" rx="10" fill="url(#tile)" stroke="#3f5e66"/>
+      <path d="M355 50h165" stroke="#395c63"/>
+      <path d="M360 76h95m-95 19h151m-151 19h118" stroke="#73939a" stroke-width="6" stroke-linecap="round" opacity=".65"/>
+      <rect x="338" y="158" width="199" height="126" rx="10" fill="url(#tile)" stroke="#3f5e66"/>
+      <path d="M355 191h165" stroke="#395c63"/>
+      <path d="m361 215 9 7-9 7m20 0h52" stroke="#60dfc3" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </g>
+    <text x="1215" y="379" fill="#8faeaf" font-size="13" text-anchor="end">Layout illustration</text>
+  </g>
+</svg>

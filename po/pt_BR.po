@@ -1,0 +1,256 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr "Project-Id-Version: Trait JustTiling 0.17.0\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: pt_BR\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " or "
+msgstr " ou "
+
+msgid "(empty identifier)"
+msgstr "(identificador vazio)"
+
+msgid "A border using the GNOME accent color."
+msgstr "Borda com a cor de destaque do GNOME."
+
+msgid "About"
+msgstr "Sobre"
+
+msgid "Already used for “%s”."
+msgstr "Já usado para “%s”."
+
+msgid "Always float this application"
+msgstr "Sempre deixar este aplicativo flutuante"
+
+msgid "Always-floating applications"
+msgstr "Aplicativos sempre flutuantes"
+
+msgid "Applied immediately to the layout. Values range from 0 to 64."
+msgstr "Aplicados imediatamente ao layout. Valores de 0 a 64."
+
+msgid "At the work area edges"
+msgstr "Nas bordas da área útil"
+
+msgid "Auto-tiling paused: another window manager became active"
+msgstr "Organização pausada: outro gerenciador de janelas foi ativado"
+
+msgid "Auto-tiling paused: another window manager is active"
+msgstr "Organização pausada: outro gerenciador de janelas está ativo"
+
+msgid "Auto-tiling paused: exactly one monitor is required"
+msgstr "Organização pausada: é necessário usar apenas um monitor"
+
+msgid "Auto-tiling paused: target workspace was removed"
+msgstr "Organização pausada: o espaço de trabalho foi removido"
+
+msgid "Automatic per-window exceptions are not shown in this list."
+msgstr "As exceções automáticas por janela não aparecem nesta lista."
+
+msgid "Automatic tiling disabled"
+msgstr "Organização automática desligada"
+
+msgid "Automatic tiling disabled."
+msgstr "Auto-tiling desligado."
+
+msgid "Automatic tiling enabled"
+msgstr "Organização automática ligada"
+
+msgid "Automatic tiling enabled."
+msgstr "Auto-tiling ligado."
+
+msgid "Automatic window tiling for GNOME."
+msgstr "Organização automática de janelas para o GNOME."
+
+msgid "Between windows"
+msgstr "Entre janelas"
+
+msgid "Change"
+msgstr "Alterar"
+
+msgid "Changes are saved automatically. Tiling supports one monitor."
+msgstr "As alterações são salvas automaticamente. O tiling funciona com um monitor."
+
+msgid "Choose a shortcut or disable its keyboard action. Super+Arrow temporarily replaces GNOME shortcuts while tiling is active. The menu remains available."
+msgstr "Escolha uma combinação ou desative a ação pelo teclado. Super+setas substituem temporariamente os atalhos do GNOME enquanto a extensão estiver ativa. O menu continua disponível."
+
+msgid "Clear all"
+msgstr "Apagar tudo"
+
+msgid "Clear all learned layouts"
+msgstr "Apagar todo o aprendizado"
+
+msgid "Contact"
+msgstr "Contato"
+
+msgid "Cycle focus through tiled windows"
+msgstr "Alternar foco entre janelas organizadas"
+
+msgid "Developer"
+msgstr "Desenvolvedor"
+
+msgid "Disabled"
+msgstr "Desativado"
+
+msgid "Enable automatic tiling before toggling a window."
+msgstr "Ligue o auto-tiling antes de alternar uma janela."
+
+msgid "Forget"
+msgstr "Esquecer"
+
+msgid "Gaps"
+msgstr "Espaçamentos"
+
+msgid "Highlight the focused window"
+msgstr "Destacar janela em foco"
+
+msgid "Invalid shortcut"
+msgstr "Combinação inválida"
+
+msgid "Keyboard shortcuts"
+msgstr "Atalhos"
+
+msgid "Layout learning"
+msgstr "Aprendizado de layout"
+
+msgid "Learn application positions and sizes"
+msgstr "Aprender posições e tamanhos dos aplicativos"
+
+msgid "Learns from manual split adjustments and window swaps. Saved preferences guide new windows when space allows."
+msgstr "Aprende com ajustes manuais de divisões e trocas de posição. As preferências orientam novas aberturas quando houver espaço."
+
+msgid "Left"
+msgstr "À esquerda"
+
+msgid "New window position"
+msgstr "Posição de novas janelas"
+
+msgid "No application exceptions"
+msgstr "Nenhuma exceção por aplicativo"
+
+msgid "No learned applications"
+msgstr "Nenhum aplicativo aprendido"
+
+msgid "Only when the application has a single tiled window. Turning this off pauses both learning and the use of saved preferences."
+msgstr "Somente com uma janela organizada do aplicativo. Desativar pausa o aprendizado e a aplicação das preferências salvas."
+
+msgid "Other window managers are active: %s"
+msgstr "Outros gerenciadores de janelas estão ativos: %s"
+
+msgid "Position: %s%%, %s%% · Size: %s%% × %s%%"
+msgstr "Posição: %s%%, %s%% · Tamanho: %s%% × %s%%"
+
+msgid "Preferences…"
+msgstr "Preferências…"
+
+msgid "Preserve the focused window size"
+msgstr "Preservar tamanho da janela em foco"
+
+msgid "Press the desired key combination.\nBackspace disables; Enter saves; Escape cancels."
+msgstr "Pressione a combinação desejada.\nBackspace desativa; Enter salva; Escape cancela."
+
+msgid "Rearrange windows manually to save your preferences."
+msgstr "Reorganize janelas manualmente para salvar suas preferências."
+
+msgid "Remove exception for %s"
+msgstr "Remover exceção de %s"
+
+msgid "Reset"
+msgstr "Restaurar"
+
+msgid "Reset gaps"
+msgstr "Restaurar espaçamentos"
+
+msgid "Reset only the two gaps to 15"
+msgstr "Restaurar somente os dois espaçamentos para 15"
+
+msgid "Resize splits when releasing a window edge"
+msgstr "Ajustar divisões ao soltar a borda"
+
+msgid "Restore default values"
+msgstr "Voltar aos valores padrão"
+
+msgid "Restore the default shortcut for this action"
+msgstr "Restaurar o atalho padrão desta ação"
+
+msgid "Right"
+msgstr "À direita"
+
+msgid "Save"
+msgstr "Salvar"
+
+msgid "Saving replaces the shortcuts for this action."
+msgstr "Salvar substitui os atalhos desta ação."
+
+msgid "Select a tiled window to swap positions."
+msgstr "Selecione uma janela organizada para trocar de posição."
+
+msgid "Set shortcut"
+msgstr "Definir atalho"
+
+msgid "Shortcut %s unavailable: %s. Choose another shortcut in Preferences."
+msgstr "Atalho %s indisponível: %s. Escolha outra combinação nas Preferências."
+
+msgid "Swap windows by dragging and dropping"
+msgstr "Trocar janelas ao arrastar e soltar"
+
+msgid "Swap with the window above"
+msgstr "Trocar janela com a de cima"
+
+msgid "Swap with the window below"
+msgstr "Trocar janela com a de baixo"
+
+msgid "Swap with the window on the left"
+msgstr "Trocar janela com a da esquerda"
+
+msgid "Swap with the window on the right"
+msgstr "Trocar janela com a da direita"
+
+msgid "The menu will remain available."
+msgstr "O menu continuará disponível."
+
+msgid "The two windows do not fit in their destination positions."
+msgstr "As duas janelas não cabem nas posições de destino."
+
+msgid "This combination is already used by a GNOME shortcut."
+msgstr "Esta combinação já está em uso por um atalho do GNOME."
+
+msgid "This window is not ready or cannot participate in tiling."
+msgstr "Esta janela ainda não está pronta ou não pode participar do tiling."
+
+msgid "Tile windows automatically"
+msgstr "Organizar janelas automaticamente"
+
+msgid "Tiling"
+msgstr "Organização"
+
+msgid "Tiling paused"
+msgstr "Organização pausada"
+
+msgid "To add an application, select one of its windows and enable “Always float this application” in the panel menu."
+msgstr "Para adicionar, selecione uma janela e marque “Sempre deixar este aplicativo flutuante” no menu do painel."
+
+msgid "Toggle automatic tiling"
+msgstr "Ligar/desligar a organização"
+
+msgid "Toggle the active window between tiled and floating"
+msgstr "Alternar janela ativa entre organizada e flutuante"
+
+msgid "Toggle the window between tiled and floating"
+msgstr "Alternar janela entre organizada e flutuante"
+
+msgid "Use Super, Ctrl or Alt together with another key."
+msgstr "Use Super, Ctrl ou Alt junto com outra tecla."
+
+msgid "When opening windows, shrink other windows first. Shrink the focused window only when necessary."
+msgstr "Ao abrir janelas, reduzir primeiro as outras. A janela em foco só diminui se necessário."
+
+msgid "Within the space chosen for the new window. In stacked splits: above or below."
+msgstr "No espaço escolhido para a nova janela. Em divisões empilhadas: acima ou abaixo."
+
+msgid "conflicts with %s"
+msgstr "conflito com %s"
+
+msgid "invalid shortcut"
+msgstr "combinação inválida"
+
+msgid "the compositor refused the shortcut"
+msgstr "o compositor recusou o registro"
+

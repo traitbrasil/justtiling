@@ -1,0 +1,734 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import {N_} from './strings.js';
+import {ids, insert, remove, sameRect, solve} from './layout/tree.js';
+import {appIdentities, constraints, exclusion, matchesApp} from './rules.js';
+import {applyLearning, learningMatch, normalizedFrame, uniqueLearningKey} from './learning.js';
+import {beginDrag, finishDrag, swapTiles, directionalNeighbor} from './layout/drag.js';
+import {beginResize, finishResize, sameSpecs} from './layout/resize.js';
+
+const SETTLE_MS = 400;
+const READY_MS = 2000;
+const MAX_CORRECTIONS = 2;
+const MAX_TILES = 64;
+
+// The adapter owns all native objects. The controller owns only IDs and plain data.
+export class Controller {
+    constructor(adapter, clock, gaps = {inner: 8, outer: 8}) {
+        this.adapter = adapter;
+        this.clock = clock;
+        this.gaps = gaps;
+        this.records = new Map();
+        this.trees = new Map();
+        this.domain = 0;
+        this.tree = null;
+        this.running = false;
+        this.suspended = false;
+        this.timer = null;
+        this.due = Infinity;
+        this.lastFocus = null;
+        this.insertionSide = 'right';
+        this.preserveFocusedWindow = true;
+        this.focusByDomain = new Map();
+        this.floatingApps = [];
+        this.debug = false;
+        this.onStateChanged = null;
+        this.resizeSplits = true;
+        this.dragSwap = true;
+        this.drag = null;
+        this.resize = null;
+        this.learnLayouts = true;
+        this.learnedLayouts = Object.create(null);
+        this.onLearnedLayouts = null;
+        this.learningPending = null;
+    }
+
+    changed() {
+        try { this.onStateChanged?.(); }
+        catch (e) { this.adapter.log('warn', `Status update: ${e}`); }
+    }
+
+    get tree() { return this.trees.get(this.domain) ?? null; }
+    set tree(value) {
+        if (value) this.trees.set(this.domain, value);
+        else this.trees.delete(this.domain);
+    }
+
+    removeWindow(id) {
+        // One owner per window, including closures and transfers on inactive workspaces.
+        for (const [domain, tree] of this.trees) {
+            const next = remove(tree, id);
+            // Excluded desktop/dialog windows are reconsidered every reconcile.
+            // They must not cancel a manual intent when no tile was removed.
+            if (next !== tree) this.learningPending = null;
+            if (next) this.trees.set(domain, next);
+            else this.trees.delete(domain);
+        }
+    }
+
+    start() {
+        if (this.running && !this.suspended) return;
+        if (this.suspended) this.stop();
+        this.suspended = false;
+        this.running = true;
+        this.schedule(0);
+        this.changed();
+    }
+
+    event({kind, id, grab}) {
+        if (!this.running || this.suspended)
+            return;
+        const r = this.records.get(id);
+        if (kind === 'closed') {
+            if (this.resize?.id === id) this.resize = null;
+            if (this.drag?.id === id) this.drag = null;
+            this.removeWindow(id);
+            this.records.delete(id);
+        } else if (kind === 'focus') {
+            if (r?.state === 'tiled') {
+                this.lastFocus = id;
+                this.focusByDomain.set(r.domain, id);
+            }
+            return;
+        } else if (kind === 'grab-begin' && r && ['tiled', 'preparing', 'floating'].includes(r.state)) {
+            if (this.drag && this.drag.id !== id) this.cancelDrag('drag-context-changed');
+            if (grab?.kind === 'move' && grab.pointer && this.dragSwap && r.state === 'tiled' &&
+                this.beginDrag(r)) return;
+            if (grab?.kind === 'resize' && this.resizeSplits && r.state === 'tiled' &&
+                this.beginSplitResize(r, grab.edges)) return;
+            if (this.resize) this.cancelSplitResize('resize-context-changed');
+            if (this.drag) this.cancelDrag('drag-context-changed');
+            // Yield before the user starts moving. Never fight native snap/resize.
+            if (r.state !== 'floating') {
+                this.float(r, 'user-interaction', false);
+                r.override = 'floating';
+            }
+            r.grabbed = true;
+        } else if (kind === 'grab-end' && r) {
+            if (this.resize?.id === id) this.endSplitResize();
+            if (this.drag?.id === id) this.endDrag();
+            r.grabbed = false;
+        } else if (kind === 'above' && r) {
+            if (!r.settingAbove && r.raised && !this.adapter.read(id)?.above) {
+                r.raised = false;
+                r.wantsAbove = false;
+            }
+            return;
+        } else if (kind === 'geometry') {
+            if (this.resize || this.drag) return;
+            if (r?.state !== 'tiled') return;
+            this.schedule(SETTLE_MS);
+            return;
+        }
+        this.schedule(30);
+    }
+
+    schedule(delay) {
+        if (!this.running || this.suspended)
+            return;
+        const due = this.clock.now() + delay;
+        if (this.timer !== null && this.due <= due)
+            return;
+        if (this.timer !== null) this.clock.cancel(this.timer);
+        this.due = due;
+        this.timer = this.clock.after(delay, () => {
+            this.timer = null;
+            this.due = Infinity;
+            try {
+                this.reconcile();
+            } catch (error) {
+                this.adapter.log('error', `Controller stopped: ${error.stack ?? error}`);
+                this.stop();
+            }
+            this.changed();
+        });
+    }
+
+    suspend(reason) {
+        this.learningPending = null;
+        if (this.suspended) return;
+        this.suspended = true;
+        if (this.timer !== null) this.clock.cancel(this.timer);
+        this.timer = null;
+        this.due = Infinity;
+        for (const r of this.records.values()) {
+            this.release(r, !r.grabbed);
+            r.grabbed = false;
+        }
+        this.resize = null;
+        this.drag = null;
+        this.trees.clear();
+        this.adapter.log('warn', `${reason}; use the toggle to restart explicitly.`);
+        this.adapter.notice(reason);
+        this.changed();
+    }
+
+    stop() {
+        this.learningPending = null;
+        this.running = false;
+        if (this.timer !== null) this.clock.cancel(this.timer);
+        this.timer = null;
+        this.due = Infinity;
+        for (const r of this.records.values()) {
+            this.release(r, !r.grabbed);
+            r.grabbed = false;
+        }
+        this.resize = null;
+        this.drag = null;
+        this.records.clear();
+        this.trees.clear();
+        this.focusByDomain.clear();
+        this.changed();
+    }
+
+    capture(r) {
+        r.snapshot ??= this.adapter.capture(r.id);
+    }
+
+    release(r, restoreGeometry) {
+        try {
+            if (!this.adapter.read(r.id)?.alive) return;
+            if (r.raised) this.setAbove(r, false);
+            if (restoreGeometry && r.touched && r.snapshot)
+                this.adapter.restore(r.id, r.snapshot);
+        } catch (e) {
+            this.adapter.log('warn', `Restore ${r.id}: ${e}`);
+        } finally {
+            r.touched = false;
+            r.request = null;
+            r.snapshot = null;
+        }
+    }
+
+    setAbove(r, value) {
+        r.settingAbove = true;
+        try {
+            // Set ownership before the synchronous notify::above callback.
+            r.raised = value;
+            this.adapter.above(r.id, value);
+        } finally {
+            r.settingAbove = false;
+        }
+    }
+
+    float(r, reason, restore = true) {
+        if (this.resize?.id === r.id) this.resize = null;
+        if (this.drag?.id === r.id) this.drag = null;
+        this.removeWindow(r.id);
+        this.release(r, restore);
+        r.state = 'floating';
+        r.reason = reason;
+        r.wantsAbove = true;
+        this.adapter.log('info', `Floating ${r.id}: ${reason}`);
+    }
+
+    syncAbove(r, data, paused) {
+        if (!data?.alive || r.grabbed) return;
+        const shouldRaise = r.state === 'floating' && r.wantsAbove && data.normal &&
+            !data.transient && !data.overrideRedirect && !data.skipTaskbar &&
+            data.inScope && !data.fullscreen && !data.minimized && !paused;
+        if (!shouldRaise && r.raised) this.setAbove(r, false);
+        if (shouldRaise && !data.above) {
+            this.capture(r);
+            this.setAbove(r, true);
+        }
+    }
+
+    toggleWindow(id) {
+        if (!this.running || this.suspended) {
+            this.adapter.notice(N_("Enable automatic tiling before toggling a window."));
+            return;
+        }
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        const r = this.records.get(id);
+        const d = this.adapter.read(id);
+        if (!r || exclusion(d) || !d.ready) {
+            this.adapter.notice(N_("This window is not ready or cannot participate in tiling."));
+            return;
+        }
+        if (['tiled', 'preparing', 'pending'].includes(r.state)) {
+            r.override = 'floating';
+            this.float(r, 'user-toggle');
+        } else {
+            this.release(r, true);
+            r.override = 'tiled';
+            r.state = 'pending';
+            r.born = this.clock.now();
+        }
+        this.schedule(0);
+    }
+
+    cycleFocus() {
+        if (!this.running || this.suspended || this.resize || this.drag || this.adapter.monitorCount() !== 1) return;
+        const domain = this.adapter.activeWorkspace?.() ?? this.domain;
+        if (domain !== this.domain || !this.adapter.targetActive()) return;
+        const windows = ids(this.tree).map(id => ({id, data: this.adapter.read(id)}));
+        // Fullscreen yields to the application rather than stealing its focus.
+        if (this.adapter.list().some(id => {
+            const data = this.adapter.read(id);
+            return data?.inScope && data.fullscreen;
+        })) return;
+        const candidates = windows.filter(({id, data}) => this.records.get(id)?.state === 'tiled' &&
+            !exclusion(data) && data.ready && !data.maximized)
+            .sort((a, b) => a.data.rect.y - b.data.rect.y || a.data.rect.x - b.data.rect.x || a.id - b.id);
+        if (!candidates.length) return;
+        const current = this.adapter.focusedId?.(), index = candidates.findIndex(item => item.id === current);
+        const next = candidates[(index + 1) % candidates.length].id;
+        if (next === current) return;
+        this.adapter.focusWindow(next);
+    }
+
+    swapDirection(direction) {
+        if (!this.running || this.suspended || this.resize || this.drag || this.adapter.monitorCount() !== 1) return;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        const id = this.adapter.focusedId?.(), data = this.adapter.read(id);
+        if (this.records.get(id)?.state !== 'tiled' || exclusion(data) || !data.ready || data.maximized) {
+            this.adapter.notice(N_("Select a tiled window to swap positions.")); return;
+        }
+        const specs = this.layoutSpecs(), area = this.adapter.area();
+        const plan = solve(this.tree, area, specs, this.gaps);
+        if (!plan || [...plan.frames].some(([key, frame]) => !sameRect(this.adapter.read(key)?.rect, frame, 1))) return;
+        const target = directionalNeighbor(plan.cells, id, direction);
+        if (target === null) return;
+        const next = swapTiles(this.tree, id, target, area, specs, this.gaps);
+        if (!next) { this.adapter.notice(N_("The two windows do not fit in their destination positions.")); return; }
+        this.tree = next;
+        this.queueLearning([id, target]);
+        for (const key of ids(next)) this.records.get(key).request = null;
+        this.schedule(0);
+    }
+
+    learningWindows(extra = null) {
+        const windows = new Map();
+        for (const [id, r] of this.records) {
+            const data = this.adapter.read(id);
+            if ((r.state === 'tiled' || id === extra) && !exclusion({...data, inScope: true}) && data.ready)
+                windows.set(id, data);
+        }
+        return windows;
+    }
+
+    queueLearning(affected) {
+        this.learningPending = this.learnLayouts && affected.length ?
+            {tree: this.tree, domain: this.domain, affected, area: {...this.adapter.area()},
+                gaps: {...this.gaps}, specs: this.layoutSpecs()} : null;
+    }
+
+    commitLearning(plan) {
+        const pending = this.learningPending;
+        if (!pending) return;
+        if (!this.learnLayouts || pending.tree !== this.tree || pending.domain !== this.domain ||
+            !sameRect(pending.area, this.adapter.area()) ||
+            pending.gaps.inner !== this.gaps.inner || pending.gaps.outer !== this.gaps.outer ||
+            !sameSpecs(pending.specs, this.layoutSpecs())) {
+            this.learningPending = null; return;
+        }
+        if ([...plan.frames].some(([id, rect]) => this.records.get(id)?.state !== 'tiled' ||
+            !sameRect(this.adapter.read(id)?.rect, rect, 1))) return;
+        this.learningPending = null;
+        const windows = this.learningWindows(), apps = {...this.learnedLayouts};
+        for (const id of pending.affected) {
+            const key = uniqueLearningKey(id, windows);
+            const frame = normalizedFrame(plan.frames.get(id), this.adapter.area(), this.gaps);
+            if (!key || !frame || (!Object.hasOwn(apps, key) && Object.keys(apps).length >= 128)) continue;
+            const oldKey = learningMatch(windows.get(id), apps);
+            if (oldKey && oldKey !== key) delete apps[oldKey];
+            apps[key] = frame;
+        }
+        if (JSON.stringify(apps) !== JSON.stringify(this.learnedLayouts)) {
+            this.learnedLayouts = apps;
+            try { this.onLearnedLayouts?.(apps); }
+            catch (error) { this.adapter.log('warn', `Cannot save learned layout: ${error}`); }
+        }
+    }
+
+    learnedInsertion(tree, id, specs, area, before) {
+        if (!this.learnLayouts) return tree;
+        const windows = this.learningWindows(id), goals = new Map();
+        for (const key of ids(tree)) {
+            if (!uniqueLearningKey(key, windows)) continue;
+            const profile = learningMatch(windows.get(key), this.learnedLayouts);
+            if (profile) goals.set(key, this.learnedLayouts[profile]);
+        }
+        let protectedFocus = null;
+        const old = before?.frames.get(this.lastFocus), next = solve(tree, area, specs, this.gaps)?.frames.get(this.lastFocus);
+        if (this.preserveFocusedWindow && old && next && next.width >= old.width && next.height >= old.height)
+            protectedFocus = {id: this.lastFocus, width: old.width, height: old.height};
+        return applyLearning(tree, id, goals, area, specs, this.gaps, protectedFocus);
+    }
+
+    applyAppRule(target) {
+        const identities = appIdentities(target);
+        for (const r of this.records.values()) {
+            const data = this.adapter.read(r.id);
+            if (data && r.override === 'tiled' && matchesApp(data, identities))
+                r.override = null;
+        }
+        this.schedule(0);
+    }
+
+    layoutSpecs() {
+        const specs = new Map();
+        for (const id of ids(this.tree)) {
+            const data = this.adapter.read(id);
+            const r = this.records.get(id);
+            if (!r || r.state !== 'tiled' || exclusion(data) || !data.ready || data.maximized) continue;
+            specs.set(id, constraints(data));
+        }
+        return specs;
+    }
+
+    beginSplitResize(r, edges) {
+        if (this.resize?.id === r.id) return true;
+        if (this.adapter.monitorCount() !== 1) return false;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        const data = this.adapter.read(r.id);
+        if (exclusion(data) || !data.ready || data.maximized) return false;
+        const specs = this.layoutSpecs();
+        const context = beginResize(this.tree, r.id, edges, data.rect, this.adapter.area(), specs, this.gaps);
+        if (!context) return false;
+        this.resize = {...context, domain: this.domain, rules: [...this.floatingApps]};
+        r.grabbed = true;
+        r.request = null;
+        // Native drag owns the frame until grab-op-end. No resize polling.
+        if (this.timer !== null) this.clock.cancel(this.timer);
+        this.timer = null;
+        this.due = Infinity;
+        this.adapter.log('info', `Split resize started ${r.id}: ${edges.join(',')}`);
+        return true;
+    }
+
+    validResize(context) {
+        return this.resizeSplits && this.validLayoutContext(context);
+    }
+
+    validLayoutContext(context) {
+        const data = this.adapter.read(context.id);
+        return this.adapter.monitorCount() === 1 &&
+            this.domain === context.domain && this.tree === context.tree &&
+            !exclusion(data) && data.ready && !data.maximized &&
+            sameRect(this.adapter.area(), context.area) &&
+            this.gaps.inner === context.gaps.inner && this.gaps.outer === context.gaps.outer &&
+            this.floatingApps.length === context.rules.length &&
+            this.floatingApps.every((value, i) => value === context.rules[i]) &&
+            sameSpecs(this.layoutSpecs(), context.specs);
+    }
+
+    cancelSplitResize(reason) {
+        const context = this.resize;
+        this.resize = null;
+        const r = context && this.records.get(context.id);
+        if (r) {
+            this.float(r, reason, false);
+            r.override = 'floating';
+        }
+    }
+
+    endSplitResize() {
+        const context = this.resize;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        if (!this.validResize(context)) {
+            this.cancelSplitResize('resize-context-changed');
+            return;
+        }
+        const result = finishResize(context, this.adapter.read(context.id).rect);
+        if (!result) {
+            this.cancelSplitResize('unsupported-resize');
+            return;
+        }
+        this.resize = null;
+        this.tree = result.tree;
+        if (result.tree !== context.tree) this.queueLearning([...result.plan.frames.keys()].filter(id =>
+            !sameRect(result.plan.frames.get(id), context.plan.frames.get(id), 1)));
+        for (const id of ids(this.tree)) this.records.get(id).request = null;
+        this.adapter.log('info', `Split resize applied ${context.id}`);
+        this.schedule(0);
+    }
+
+    beginDrag(r) {
+        if (this.drag?.id === r.id) return true;
+        if (this.resize || this.adapter.monitorCount() !== 1) return false;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        const data = this.adapter.read(r.id);
+        if (exclusion(data) || !data.ready || data.maximized) return false;
+        const frames = new Map(ids(this.tree).map(id => [id, this.adapter.read(id)?.rect]));
+        const context = beginDrag(this.tree, r.id, frames, this.adapter.area(), this.layoutSpecs(), this.gaps);
+        if (!context) return false;
+        this.drag = {...context, domain: this.domain, rules: [...this.floatingApps]};
+        r.grabbed = true;
+        r.request = null;
+        if (this.timer !== null) this.clock.cancel(this.timer);
+        this.timer = null;
+        this.due = Infinity;
+        this.adapter.log('info', `Tile drag started ${r.id}`);
+        return true;
+    }
+
+    cancelDrag(reason) {
+        const context = this.drag;
+        this.drag = null;
+        const r = context && this.records.get(context.id);
+        if (r) {
+            this.float(r, reason, false);
+            r.override = 'floating';
+        }
+    }
+
+    endDrag() {
+        const context = this.drag;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        if (!this.dragSwap || !this.validLayoutContext(context)) {
+            this.cancelDrag('drag-context-changed');
+            return;
+        }
+        // Read the pointer once at release; no motion hooks, polling or native grabs.
+        let point = null;
+        try { point = this.adapter.pointer?.(); }
+        catch (error) { this.adapter.log('warn', `Drop pointer unavailable: ${error}`); }
+        const result = finishDrag(context, this.adapter.read(context.id).rect, point);
+        if (!result) {
+            this.cancelDrag('drag-no-compatible-target');
+            return;
+        }
+        this.drag = null;
+        this.tree = result.tree;
+        if (result.target !== context.id) this.queueLearning([context.id, result.target]);
+        for (const id of ids(this.tree)) this.records.get(id).request = null;
+        this.adapter.log('info', `Tile drop ${context.id} -> ${result.target}`);
+        this.schedule(0);
+    }
+
+    reconcile() {
+        if (!this.running || this.suspended) return;
+        if (this.adapter.monitorCount() !== 1) {
+            this.suspend(N_("Auto-tiling paused: exactly one monitor is required"));
+            return;
+        }
+        if (this.adapter.activeWorkspace) {
+            this.domain = this.adapter.activeWorkspace();
+            this.lastFocus = this.focusByDomain.get(this.domain) ?? null;
+        }
+        const focusedId = this.adapter.focusedId?.();
+        const focused = this.records.get(focusedId);
+        if (focused?.state === 'tiled' && focused.domain === this.domain) {
+            this.lastFocus = focusedId;
+            this.focusByDomain.set(this.domain, focusedId);
+        }
+        if (!this.adapter.targetExists()) {
+            this.suspend(N_("Auto-tiling paused: target workspace was removed"));
+            return;
+        }
+        if (this.resize) {
+            if (this.validResize(this.resize)) return;
+            this.cancelSplitResize('resize-context-changed');
+        }
+
+        if (this.drag) {
+            if (this.dragSwap && this.validLayoutContext(this.drag)) return;
+            this.cancelDrag('drag-context-changed');
+        }
+
+        const live = new Set(this.adapter.list());
+        for (const id of this.records.keys()) {
+            if (!live.has(id)) {
+                this.removeWindow(id);
+                this.records.delete(id);
+            }
+        }
+        const now = this.clock.now();
+        for (const id of live) {
+            if (!this.records.has(id)) this.records.set(id, {
+                id, state: 'pending', born: now, snapshot: null,
+                touched: false, raised: false, wantsAbove: false, request: null,
+            });
+        }
+        const data = new Map([...this.records.keys()].map(id => [id, this.adapter.read(id)]));
+        const paused = !this.adapter.targetActive() || [...data.values()]
+            .some(d => d?.inScope && d.fullscreen);
+
+        // Release windows that leave our scope, even while another workspace is active.
+        for (const r of this.records.values()) {
+            const d = data.get(r.id);
+            const reason = exclusion(d);
+            if (!d?.alive) {
+                this.removeWindow(r.id);
+                this.records.delete(r.id);
+                continue;
+            }
+            if (this.debug) {
+                const identity = appIdentities(d).join(', ') || '(sem identificador)';
+                if (r.identityLogged !== identity) {
+                    this.adapter.log('info', `Window ${r.id} identities: ${identity}`);
+                    r.identityLogged = identity;
+                }
+            }
+            const domain = d.domain ?? this.domain;
+            if (r.domain !== undefined && r.domain !== domain) {
+                this.removeWindow(r.id);
+                this.release(r, true);
+                if (r.state !== 'floating') {
+                    r.state = 'pending';
+                    r.born = now;
+                    this.schedule(150);
+                }
+            }
+            r.domain = domain;
+            // Merely switching workspace does not release that workspace's tiles.
+            // Only transfers, closure, or explicit state changes alter their ownership.
+            if (reason === 'outside-target' && d.domain !== undefined && d.monitor === 0) {
+                this.syncAbove(r, d, true);
+                continue;
+            }
+            // Features may still be unset at window-created. Do not permanently
+            // classify a new normal window as fixed-size before it is mapped.
+            if (r.state === 'pending' && d.inScope && d.normal &&
+                (!d.ready || now - r.born < 150)) {
+                if (now - r.born >= READY_MS) this.float(r, 'not-ready');
+                else this.schedule(100);
+                continue;
+            }
+            if (r.state === 'tiled' && d.fullscreen) continue;
+            if (reason && r.state !== 'floating') {
+                this.removeWindow(r.id);
+                this.release(r, reason === 'outside-target');
+                r.state = 'excluded';
+                r.reason = reason;
+                // Fixed-size normal windows also get floating overlay treatment.
+                if (reason === 'fixed-size') this.float(r, reason, false);
+            } else if (!reason && r.state === 'excluded') {
+                r.state = 'pending';
+                r.born = now;
+                this.schedule(150);
+            }
+            if (reason === 'outside-target' && r.state === 'floating' && r.touched)
+                this.release(r, true);
+            this.syncAbove(r, d, paused);
+        }
+        if (this.adapter.workspaces) {
+            const remaining = new Set(this.adapter.workspaces());
+            for (const domain of this.trees.keys()) {
+                if (!remaining.has(domain)) this.trees.delete(domain);
+            }
+            for (const domain of this.focusByDomain.keys()) {
+                if (!remaining.has(domain)) this.focusByDomain.delete(domain);
+            }
+        }
+        if (paused) return;
+
+        const area = this.adapter.area();
+        const specs = new Map();
+        for (const r of this.records.values()) {
+            const d = data.get(r.id);
+            if (!exclusion(d)) specs.set(r.id, constraints(d));
+        }
+        // A resolution/hint change can invalidate an existing tree. Newest leaves yield first.
+        while (this.tree && !solve(this.tree, area, specs, this.gaps)) {
+            const newest = ids(this.tree).at(-1);
+            this.float(this.records.get(newest), 'incompatible-constraints');
+        }
+
+        for (const r of this.records.values()) {
+            const d = data.get(r.id);
+            if (exclusion(d)) continue;
+            if (r.override === 'floating') {
+                if (r.state !== 'floating') this.float(r, 'user-toggle');
+                continue;
+            }
+            const byApp = r.override !== 'tiled' && matchesApp(d, this.floatingApps);
+            if (byApp && (r.state !== 'floating' || r.reason === 'app-exception')) {
+                if (r.reason !== 'app-exception' || r.state !== 'floating')
+                    this.float(r, 'app-exception');
+                continue;
+            }
+            if (!byApp && r.state === 'floating' && r.reason === 'app-exception') {
+                this.release(r, true);
+                r.state = 'pending';
+                r.born = now;
+                this.schedule(150);
+            }
+            if (r.state === 'tiled' && d.maximized) {
+                this.float(r, 'user-maximized', false);
+                continue;
+            }
+            if (!['pending', 'preparing'].includes(r.state) || exclusion(d)) continue;
+            if (r.state === 'pending' && now - r.born < 150) continue;
+            if (!d.ready || (r.state === 'preparing' &&
+                (d.maximized || now < r.prepareUntil))) {
+                if (now - r.born >= READY_MS) this.float(r, 'not-ready');
+                else this.schedule(100);
+                continue;
+            }
+            const spec = specs.get(r.id);
+            if (spec.maxWidth < spec.minWidth || spec.maxHeight < spec.minHeight) {
+                this.float(r, 'incompatible-constraints');
+                continue;
+            }
+            if (ids(this.tree).length >= MAX_TILES) {
+                this.float(r, 'capacity');
+                continue;
+            }
+            const before = solve(this.tree, area, specs, this.gaps);
+            let next = insert(this.tree, r.id, specs, area, this.gaps, this.lastFocus, this.insertionSide, this.preserveFocusedWindow);
+            if (!next) {
+                this.float(r, 'insufficient-space');
+                continue;
+            }
+            next = this.learnedInsertion(next, r.id, specs, area, before);
+            this.capture(r);
+            if (d.maximized) {
+                r.touched = true;
+                r.state = 'preparing';
+                r.prepareUntil = now + SETTLE_MS;
+                r.born = now;
+                this.adapter.unmaximize(r.id);
+                this.schedule(100);
+                continue;
+            }
+            if (r.state === 'preparing') r.snapshot.rect = {...d.rect};
+            this.learningPending = null;
+            this.tree = next;
+            r.state = 'tiled';
+            r.reason = null;
+            this.adapter.log('info', `Tiled ${r.id}`);
+        }
+
+        const plan = solve(this.tree, area, specs, this.gaps);
+        if (!plan) return;
+        let removed = false;
+        for (const [id, rect] of plan.frames) {
+            const r = this.records.get(id);
+            const d = data.get(id);
+            if (!sameRect(r.request?.rect, rect)) {
+                r.request = {rect, corrections: 0, deadline: now + SETTLE_MS};
+                if (!sameRect(d.rect, rect, 1)) this.move(r, rect);
+            } else if (!sameRect(d.rect, rect, 1) && now >= r.request.deadline) {
+                if (r.request.corrections >= MAX_CORRECTIONS) {
+                    this.float(r, 'resize-not-converged');
+                    removed = true;
+                    continue;
+                }
+                r.request.corrections++;
+                r.request.deadline = now + SETTLE_MS;
+                this.move(r, rect);
+            }
+            // Verify even after the initial request: Wayland completion is asynchronous.
+            if (r.state !== 'tiled') continue;
+            if (!sameRect(this.adapter.read(id)?.rect, rect, 1))
+                this.schedule(Math.max(1, r.request.deadline - now));
+        }
+        for (const r of this.records.values())
+            this.syncAbove(r, this.adapter.read(r.id), false);
+        if (removed) this.schedule(0);
+        else this.commitLearning(plan);
+    }
+
+    move(r, rect) {
+        r.touched = true;
+        try {
+            this.adapter.move(r.id, rect);
+        } catch (e) {
+            this.adapter.log('warn', `Move ${r.id}: ${e}`);
+            this.float(r, 'resize-error');
+            this.schedule(0);
+        }
+    }
+}

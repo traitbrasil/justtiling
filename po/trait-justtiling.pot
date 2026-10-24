@@ -1,0 +1,256 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr "Project-Id-Version: Trait JustTiling 0.17.0\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: \nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " or "
+msgstr ""
+
+msgid "(empty identifier)"
+msgstr ""
+
+msgid "A border using the GNOME accent color."
+msgstr ""
+
+msgid "About"
+msgstr ""
+
+msgid "Already used for “%s”."
+msgstr ""
+
+msgid "Always float this application"
+msgstr ""
+
+msgid "Always-floating applications"
+msgstr ""
+
+msgid "Applied immediately to the layout. Values range from 0 to 64."
+msgstr ""
+
+msgid "At the work area edges"
+msgstr ""
+
+msgid "Auto-tiling paused: another window manager became active"
+msgstr ""
+
+msgid "Auto-tiling paused: another window manager is active"
+msgstr ""
+
+msgid "Auto-tiling paused: exactly one monitor is required"
+msgstr ""
+
+msgid "Auto-tiling paused: target workspace was removed"
+msgstr ""
+
+msgid "Automatic per-window exceptions are not shown in this list."
+msgstr ""
+
+msgid "Automatic tiling disabled"
+msgstr ""
+
+msgid "Automatic tiling disabled."
+msgstr ""
+
+msgid "Automatic tiling enabled"
+msgstr ""
+
+msgid "Automatic tiling enabled."
+msgstr ""
+
+msgid "Automatic window tiling for GNOME."
+msgstr ""
+
+msgid "Between windows"
+msgstr ""
+
+msgid "Change"
+msgstr ""
+
+msgid "Changes are saved automatically. Tiling supports one monitor."
+msgstr ""
+
+msgid "Choose a shortcut or disable its keyboard action. Super+Arrow temporarily replaces GNOME shortcuts while tiling is active. The menu remains available."
+msgstr ""
+
+msgid "Clear all"
+msgstr ""
+
+msgid "Clear all learned layouts"
+msgstr ""
+
+msgid "Contact"
+msgstr ""
+
+msgid "Cycle focus through tiled windows"
+msgstr ""
+
+msgid "Developer"
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Enable automatic tiling before toggling a window."
+msgstr ""
+
+msgid "Forget"
+msgstr ""
+
+msgid "Gaps"
+msgstr ""
+
+msgid "Highlight the focused window"
+msgstr ""
+
+msgid "Invalid shortcut"
+msgstr ""
+
+msgid "Keyboard shortcuts"
+msgstr ""
+
+msgid "Layout learning"
+msgstr ""
+
+msgid "Learn application positions and sizes"
+msgstr ""
+
+msgid "Learns from manual split adjustments and window swaps. Saved preferences guide new windows when space allows."
+msgstr ""
+
+msgid "Left"
+msgstr ""
+
+msgid "New window position"
+msgstr ""
+
+msgid "No application exceptions"
+msgstr ""
+
+msgid "No learned applications"
+msgstr ""
+
+msgid "Only when the application has a single tiled window. Turning this off pauses both learning and the use of saved preferences."
+msgstr ""
+
+msgid "Other window managers are active: %s"
+msgstr ""
+
+msgid "Position: %s%%, %s%% · Size: %s%% × %s%%"
+msgstr ""
+
+msgid "Preferences…"
+msgstr ""
+
+msgid "Preserve the focused window size"
+msgstr ""
+
+msgid "Press the desired key combination.\nBackspace disables; Enter saves; Escape cancels."
+msgstr ""
+
+msgid "Rearrange windows manually to save your preferences."
+msgstr ""
+
+msgid "Remove exception for %s"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid "Reset gaps"
+msgstr ""
+
+msgid "Reset only the two gaps to 15"
+msgstr ""
+
+msgid "Resize splits when releasing a window edge"
+msgstr ""
+
+msgid "Restore default values"
+msgstr ""
+
+msgid "Restore the default shortcut for this action"
+msgstr ""
+
+msgid "Right"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Saving replaces the shortcuts for this action."
+msgstr ""
+
+msgid "Select a tiled window to swap positions."
+msgstr ""
+
+msgid "Set shortcut"
+msgstr ""
+
+msgid "Shortcut %s unavailable: %s. Choose another shortcut in Preferences."
+msgstr ""
+
+msgid "Swap windows by dragging and dropping"
+msgstr ""
+
+msgid "Swap with the window above"
+msgstr ""
+
+msgid "Swap with the window below"
+msgstr ""
+
+msgid "Swap with the window on the left"
+msgstr ""
+
+msgid "Swap with the window on the right"
+msgstr ""
+
+msgid "The menu will remain available."
+msgstr ""
+
+msgid "The two windows do not fit in their destination positions."
+msgstr ""
+
+msgid "This combination is already used by a GNOME shortcut."
+msgstr ""
+
+msgid "This window is not ready or cannot participate in tiling."
+msgstr ""
+
+msgid "Tile windows automatically"
+msgstr ""
+
+msgid "Tiling"
+msgstr ""
+
+msgid "Tiling paused"
+msgstr ""
+
+msgid "To add an application, select one of its windows and enable “Always float this application” in the panel menu."
+msgstr ""
+
+msgid "Toggle automatic tiling"
+msgstr ""
+
+msgid "Toggle the active window between tiled and floating"
+msgstr ""
+
+msgid "Toggle the window between tiled and floating"
+msgstr ""
+
+msgid "Use Super, Ctrl or Alt together with another key."
+msgstr ""
+
+msgid "When opening windows, shrink other windows first. Shrink the focused window only when necessary."
+msgstr ""
+
+msgid "Within the space chosen for the new window. In stacked splits: above or below."
+msgstr ""
+
+msgid "conflicts with %s"
+msgstr ""
+
+msgid "invalid shortcut"
+msgstr ""
+
+msgid "the compositor refused the shortcut"
+msgstr ""
+
