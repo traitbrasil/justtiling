@@ -2,7 +2,8 @@
 import {canonicalAccelerator} from './keybindings.js';
 
 export const SYSTEM_SCHEMAS = ['org.gnome.desktop.wm.keybindings', 'org.gnome.shell.keybindings',
-    'org.gnome.mutter.keybindings', 'org.gnome.mutter.wayland.keybindings'];
+    'org.gnome.mutter.keybindings', 'org.gnome.mutter.wayland.keybindings',
+    'org.gnome.settings-daemon.plugins.media-keys'];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
 

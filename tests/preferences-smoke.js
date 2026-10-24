@@ -38,6 +38,25 @@ assert(!ui.learning.expander.expanded && !ui.exceptionExpander.expanded,
 assert(ui.learning.expander.title === (english ? 'Learned applications' : 'Aplicativos com aprendizado') &&
     ui.exceptionExpander.title === (english ? 'Application list' : 'Lista de aplicativos'),
     'Collapsible list titles must follow the session language');
+assert(!ui.pinning.expander.expanded && !ui.pinning.unpinAll.sensitive,
+    'Pinned applications start empty and collapsed');
+assert(ui.pinning.expander.title === (english ? 'Pinned applications' : 'Aplicativos fixados'),
+    'Pinned application list must be translated');
+const pinSamples = {'app-id:Example.desktop': {x: 0, y: 0, width: 0.5, height: 1},
+    'wm-class:<b>Literal</b>': {x: 0.5, y: 0, width: 0.5, height: 1}};
+settings.set_string('pinned-layouts', JSON.stringify({version: 1, apps: pinSamples}));
+assert(ui.pinning.unpinButtons.length === 2 && ui.pinning.unpinAll.sensitive && !ui.pinning.expander.expanded,
+    'Saved pins refresh without expanding the list');
+assert(ui.pinning.rows[1].title === '<b>Literal</b>' && !ui.pinning.rows[1].use_markup,
+    'Application identities must be displayed literally');
+ui.pinning.unpinButtons[0].emit('clicked');
+assert(Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 1,
+    'Unpinning one application preserves the other');
+ui.pinning.unpinAll.emit('clicked');
+assert(!ui.pinning.unpinAll.sensitive && ui.pinning.unpinButtons.length === 0,
+    'Unpin all clears stored application regions');
+assert(settings.get_strv('toggle-pin')[0] === '<Super>y' && ui.shortcuts.rows['toggle-pin'],
+    'Pin shortcut defaults to Super+Y and has a configurable preferences row');
 const learned = {'app-id:Example.desktop': {x: 0, y: 0, width: 0.5, height: 1},
     'wm-class:<b>Other</b>': {x: 0.5, y: 0, width: 0.5, height: 1}};
 settings.set_string('learned-layouts', JSON.stringify({version: 1, apps: learned}));
@@ -96,8 +115,39 @@ assert(settings.get_string('new-window-side') === 'right', 'Combo must save righ
 settings.set_string('new-window-side', 'left');
 assert(ui.controls['new-window-side'].selected === 0, 'External insertion side must update combo');
 assert(ui.controls['preserve-focused-window'].active, 'Focus size preservation must default on');
+assert(!ui.controls['hide-panel-icon'].active, 'The panel icon must remain visible by default');
+assert(ui.controls['hide-panel-icon'].title === (english ? 'Hide the panel icon' : 'Ocultar ícone do painel'),
+    'Panel icon preference must follow the session language');
 assert(ui.controls['focus-border'].active, 'Focus border must default on');
-for (const key of ['tiling-enabled', 'resize-splits', 'drag-swap', 'focus-border', 'preserve-focused-window', 'learn-layouts']) {
+assert(ui.controls['focus-border-width'].value === 2, 'Border thickness must default to two pixels');
+assert(ui.controls['focus-border-width'].title === (english ? 'Focus border width (px)' : 'Espessura da borda de foco (px)'),
+    'Border thickness field must be translated');
+ui.controls['focus-border-width'].value = 7;
+assert(settings.get_int('focus-border-width') === 7, 'Thickness edits must persist');
+settings.set_int('focus-border-width', 2);
+assert(ui.controls['focus-border-width'].value === 2, 'External thickness edits must update the control');
+ui.controls['focus-border-width'].value = 100;
+assert(settings.get_int('focus-border-width') === 8, 'Thickness upper bound must be enforced');
+ui.controls['focus-border-width'].value = 0;
+assert(settings.get_int('focus-border-width') === 1, 'Thickness lower bound must be enforced');
+settings.reset('focus-border-width');
+assert(ui.controls['corner-radius'].value === 8, 'Corner radius must preserve the previous eight-pixel default');
+assert(ui.controls['corner-radius'].title === (english ? 'Corner radius (px)' : 'Arredondamento dos cantos (px)'),
+    'Corner radius field must be translated');
+ui.controls['corner-radius'].value = 16;
+assert(settings.get_int('corner-radius') === 16, 'Editing corner radius must persist');
+settings.set_int('corner-radius', 24);
+assert(ui.controls['corner-radius'].value === 24, 'External radius change must update Preferences');
+ui.controls['corner-radius'].value = 999;
+assert(settings.get_int('corner-radius') === 64, 'Radius upper bound must be enforced');
+ui.controls['corner-radius'].value = -1;
+assert(settings.get_int('corner-radius') === 0, 'Square corners must be allowed');
+settings.reset('corner-radius');
+
+assert(!ui.controls['round-window-corners'].active, 'Rounded corners must be opt-in');
+assert(ui.controls['round-window-corners'].title === (english ? 'Round window corners' : 'Arredondar cantos das janelas'),
+    'Rounded corner setting must be translated');
+for (const key of ['hide-panel-icon', 'tiling-enabled', 'resize-splits', 'drag-swap', 'focus-border', 'round-window-corners', 'preserve-focused-window', 'learn-layouts']) {
     ui.controls[key].active = false;
     assert(!settings.get_boolean(key), `${key} was not saved`);
     settings.set_boolean(key, true);
@@ -116,7 +166,11 @@ ui.removeButtons[0].emit('clicked'); ui.removeButtons[0].emit('clicked');
 assert(ui.removeButtons.length === 0 && ui.exceptionRows.length === 1, 'Empty list placeholder');
 settings.set_strv('floating-apps', ['wm-class:Keep']);
 settings.set_strv('toggle-tiling', ['<Super>g']);
+settings.set_int('corner-radius', 12);
+settings.set_int('focus-border-width', 7);
 ui.reset.emit('clicked');
+assert(settings.get_int('focus-border-width') === 7, 'Reset gaps must preserve border thickness');
+assert(settings.get_int('corner-radius') === 12, 'Reset gaps must preserve the chosen corner radius');
 assert(settings.get_int('inner-gap') === 15 && settings.get_int('outer-gap') === 15, 'Reset only gaps');
 assert(settings.get_strv('floating-apps')[0] === 'wm-class:Keep' &&
     settings.get_strv('toggle-tiling')[0] === '<Super>g', 'Reset touched other preferences');
@@ -160,6 +214,13 @@ press(capture, Gdk.KEY_q, superMask); press(capture, Gdk.KEY_Return); flush();
 assert(settings.get_strv('toggle-tiling')[0] === '<Super>q' && settings.get_strv('toggle-tiling').length === 1,
     'Enter should commit exactly the selected shortcut');
 shortcuts.editButtons['toggle-floating'].emit('clicked'); flush(); capture = shortcuts.capture;
+const rotationSettings = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.plugins.media-keys'});
+const rotationBefore = rotationSettings.get_strv('rotate-video-lock-static');
+press(capture, Gdk.KEY_o, superMask);
+assert(!capture.save.sensitive && capture.status.label.includes('GNOME'),
+    'GNOME media shortcut Super+O must be identified as occupied in preferences');
+assert(JSON.stringify(rotationSettings.get_strv('rotate-video-lock-static')) === JSON.stringify(rotationBefore),
+    'Shortcut editor must never change GNOME rotation lock settings');
 press(capture, Gdk.KEY_q, superMask);
 assert(!capture.save.sensitive && capture.status.label.includes(english ? 'Already used' : 'Já usado'), 'Duplicate own actions must be rejected');
 // A GNOME shortcut changes while the capture dialog remains open.
@@ -177,7 +238,7 @@ press(capture, Gdk.KEY_BackSpace); capture.save.emit('clicked'); flush();
 assert(settings.get_strv('toggle-floating').length === 0 &&
     shortcuts.rows['toggle-floating'].subtitle === (english ? 'Disabled' : 'Desativado'), 'Backspace must disable only the chosen action');
 shortcuts.resetButtons['toggle-floating'].emit('clicked');
-assert(settings.get_strv('toggle-floating')[0] === '<Super>o', 'Per-action reset must restore its schema default');
+assert(settings.get_strv('toggle-floating')[0] === '<Super>g', 'Per-action reset must restore its schema default');
 assert(settings.get_strv('toggle-tiling')[0] === '<Super>q', 'Per-action reset modified another action');
 settings.set_strv('toggle-tiling', ['<Super>x']);
 assert(shortcuts.rows['toggle-tiling'].subtitle.toLowerCase().includes('x'), 'External shortcut edit must refresh row');

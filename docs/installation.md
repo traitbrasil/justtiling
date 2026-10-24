@@ -10,7 +10,7 @@
 
 Check your Shell version with `gnome-shell --version`. Other GNOME versions and multiple-monitor tiling are outside the current support scope.
 
-Version 0.19.3 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
+Version 0.26.1 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
 
 ## Build and install
 
@@ -18,7 +18,7 @@ Version 0.19.3 is being prepared for its first GNOME Extensions submission. Ther
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/just@trait.com.br.shell-extension.zip
+gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
 ```
 
 `make package` checks syntax and schemas, runs the pure tests, compiles translations, and creates the ZIP. It does not install or enable the extension.
@@ -26,9 +26,9 @@ gnome-extensions install --force dist/just@trait.com.br.shell-extension.zip
 **Log out and log back in.** Then:
 
 ```bash
-gnome-extensions enable just@trait.com.br
-gnome-extensions info just@trait.com.br
-gnome-extensions prefs just@trait.com.br
+gnome-extensions enable justtiling@trait.com.br
+gnome-extensions info justtiling@trait.com.br
+gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Open two compatible application windows to try tiling. The panel menu provides the main controls.
@@ -40,14 +40,14 @@ From your checkout:
 ```bash
 git pull --ff-only
 make package
-gnome-extensions disable just@trait.com.br
-gnome-extensions install --force dist/just@trait.com.br.shell-extension.zip
+gnome-extensions disable justtiling@trait.com.br
+gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
 ```
 
 Log out and back in, then run:
 
 ```bash
-gnome-extensions enable just@trait.com.br
+gnome-extensions enable justtiling@trait.com.br
 ```
 
 Installing an update with the same schema keeps existing preferences, application exceptions, and learned layouts. Disable/enable alone does not reliably replace JavaScript already loaded in the Shell process.
@@ -60,28 +60,37 @@ dconf dump /org/gnome/shell/extensions/justtiling/ > "$HOME/trait-justtiling-pre
 
 Keep that export private. It may contain application preferences and learned layouts.
 
-## Migrating from the development UUID
+## Migrating from a previous UUID
 
-Early versions used `justtiling@dudu.local`. If it is installed, disable it before enabling `just@trait.com.br`:
+Disable `just@trait.com.br` before installing the new UUID:
 
 ```bash
-gnome-extensions disable justtiling@dudu.local
+gnome-extensions disable just@trait.com.br
+gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
 ```
 
-Both UUIDs use the same preferences schema. Do not run both at once. The public-UUID extension refuses activation while the old version is active.
+Log out and back in, then enable the new extension:
+
+```bash
+gnome-extensions enable justtiling@trait.com.br
+```
+
+The settings schema and storage path remain unchanged. Shortcuts, floating application rules, learned layouts and all other preferences are shared with the previous UUID; no export, import or reset is needed. Keep the old extension disabled. The new extension refuses to start if a previous UUID is still active.
+
+If `justtiling@dudu.local` is installed, disable it as well. The public contact email remains `just@trait.com.br`; it is independent of the extension UUID.
 
 ## Disable or uninstall
 
 Pause tiling with **Super+T**, or disable the extension completely:
 
 ```bash
-gnome-extensions disable just@trait.com.br
+gnome-extensions disable justtiling@trait.com.br
 ```
 
 To uninstall:
 
 ```bash
-gnome-extensions uninstall just@trait.com.br
+gnome-extensions uninstall justtiling@trait.com.br
 ```
 
 These commands are not a request to reset your preferences. See [Troubleshooting](troubleshooting.md) if system shortcuts need recovery after an interrupted session.

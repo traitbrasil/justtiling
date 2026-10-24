@@ -24,7 +24,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.19.3 pure suite has 163 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.26.1 pure suite has 196 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -32,10 +32,11 @@ The 0.19.3 pure suite has 163 tests. Integration checks complement those tests; 
 | --- | --- |
 | Lifecycle | `extension.js` owns initialization, settings, scheduling, and cleanup |
 | Window management | `src/controller.js` handles eligibility, workspace trees, bounded geometry confirmation, floating fallback, and restoration |
-| Layout | `src/layout/tree.js`, `resize.js`, and `drag.js` implement pure BSP solving, split resizing, and swaps |
+| Layout | `src/layout/tree.js`, `balance.js`, `resize.js`, and `drag.js` implement pure BSP solving, balanced insertion and reflow, split resizing, and swaps |
 | Native integration | `src/shellAdapter.js` bridges Meta/Shell state and signals into plain data |
 | Rules and identity | `src/rules.js`, `processInfo.js`, `packageIdentity.js`, and `packageLookup.js` handle exact application rules and optional helper identification |
 | Keyboard | `src/keybindings.js` and `shortcutOverrides.js` register actions, handle conflicts, and journal reversible system bindings |
+| Pinning | `src/pinning.js` reserves explicit app regions, uses empty BSP leaves for unoccupied space, and relaxes saved sizes without changing the profiles when constraints require it |
 | Learning | `src/learning.js` validates local normalized profiles and scores feasible insertion candidates |
 | Shell UI | `src/indicator.js`, `focusBorder.js`, and `swapPreview.js` provide the panel menu and native actor decorations. The swap preview samples the pointer only during a tile drag and shares validation with the final drop |
 | Preferences | `prefs.js`, `src/preferences.js`, and `preferencesShortcuts.js` run in a separate GTK process |
@@ -53,8 +54,10 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/just@trait.com.br.shell-extension.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.26.1.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
-Do not package logs, tests, tools, backups, or local preferences. The UUID is `just@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
+Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 
 For manual installation, use the [installation guide](installation.md). Before a GNOME Extensions submission, review the [official guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html). Neither building nor running the isolated suite installs or publishes the extension.
+
+The optional corner mask uses GNOME 51's `Clutter.ShaderEffect` and a configurable shared radius with the focus border. `make test-corners` compiles and renders the shipped GLSL using a private surfaceless Mesa software GLES context (EGL and GLES libraries required). It verifies corner alpha, straight edges, removal of opaque exterior outlines, rounded shadow falloff, translucent native margins (with and without focus highlighting) and synchronized animation opacity, premultiplied alpha and 100%/150%/200% scale. This complements native API introspection, pure geometry tests and lifecycle tests with Shell doubles; real GNOME visual testing is still necessary. The framebuffer-coordinate mapping credits its GPL source in `src/cornerGeometry.js`.

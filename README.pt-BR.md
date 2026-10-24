@@ -20,17 +20,18 @@
 
 A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos, com um layout independente por workspace. Ajuste uma divisão, troque duas janelas ou mantenha um aplicativo flutuante. Você escolhe como trabalhar.
 
-**Versão atual: 0.19.3.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
+**Versão atual: 0.26.1.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
 
 ## Um espaço que acompanha seu trabalho
 
 - **Organização automática:** novas janelas encontram espaço; ao fechar uma janela, as demais aproveitam a área disponível.
 - **Layout do seu jeito:** redimensione divisões, troque janelas por arraste ou teclado e escolha o lado de abertura.
-- **Prioridade para seu foco:** preserve o tamanho da janela ativa ao abrir outra, sempre que houver espaço.
+- **Janelas equilibradas:** distribua o espaço entre janelas sem preferência, com prioridade para posições e tamanhos fixados ou aprendidos.
 - **Aprendizado local:** seus ajustes manuais de tamanho e posição orientam a abertura futura de aplicativos. Ativado por padrão, pode ser pausado ou apagado por aplicativo ou por completo.
 - **Liberdade para flutuar:** janelas incompatíveis ficam fora do grid. Defina também os aplicativos que devem permanecer flutuantes.
 - **Prévia da troca:** ao arrastar, um overlay semitransparente na cor de destaque do GNOME indica a janela que receberá o swap.
 - **Destaque visual:** borda opcional na cor de destaque do GNOME.
+- **Cantos arredondados:** opção para arredondar janelas organizadas e flutuantes em harmonia com a borda de foco.
 - **Preferências nativas:** personalize espaçamentos, atalhos e comportamento sem editar arquivos.
 
 O aprendizado considera o espaço e as restrições das janelas. Ele não garante a reprodução exata de um grid, e ignora aplicativos com múltiplas janelas organizadas.
@@ -43,14 +44,14 @@ Requer **GNOME Shell 51**, um monitor lógico e as ferramentas `git`, `make`, `g
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/just@trait.com.br.shell-extension.zip
+gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
 ```
 
 **Encerre e inicie a sessão novamente.** Depois:
 
 ```bash
-gnome-extensions enable just@trait.com.br
-gnome-extensions prefs just@trait.com.br
+gnome-extensions enable justtiling@trait.com.br
+gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Os guias detalhados estão em inglês: [instalação e atualização](docs/installation.md), [uso diário](docs/user-guide.md) e [configuração](docs/configuration.md).
@@ -60,12 +61,13 @@ Os guias detalhados estão em inglês: [instalação e atualização](docs/insta
 | Atalho | Ação |
 | --- | --- |
 | **Super + T** | Ligar ou desligar a organização automática |
-| **Super + O** | Alternar a janela ativa entre organizada e flutuante |
+| **Super + G** | Alternar a janela ativa entre organizada e flutuante |
+| **Super + Y** | Fixar ou desafixar o aplicativo ativo |
 | **Super + F** | Alternar o foco entre janelas organizadas |
 | **Super + C** | Trocar com uma janela numerada; Esc ou repetir o atalho cancela |
 | **Super + ← / → / ↑ / ↓** | Trocar a janela ativa com a vizinha |
 
-As oito ações são configuráveis nas Preferências. Super+setas substitui temporariamente os atalhos conflitantes do GNOME enquanto a organização está ativa; eles são restaurados quando a gestão é interrompida.
+As nove ações são configuráveis nas Preferências. Super+setas substitui temporariamente os atalhos conflitantes do GNOME enquanto a organização está ativa; eles são restaurados quando a gestão é interrompida.
 
 ## Compatibilidade e privacidade
 

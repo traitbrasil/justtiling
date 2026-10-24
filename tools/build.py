@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[1]
 metadata = json.loads((root / 'metadata.json').read_text())
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
-output = dist / f"{metadata['uuid']}.shell-extension.zip"
+output = dist / f"trait-justtiling-{metadata['version-name']}.zip"
 with tempfile.TemporaryDirectory(prefix='justtiling-build-') as tmp:
     stage = Path(tmp)
     for name in ['metadata.json', 'extension.js', 'prefs.js', 'LICENSE']:

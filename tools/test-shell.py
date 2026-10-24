@@ -26,11 +26,13 @@ with tempfile.TemporaryDirectory(prefix='justtiling-smoke-') as tmp:
         shutil.copytree(root / name, stage / name)
     shutil.copyfile(root / 'extension.js', stage / 'extension.js')
     replacements = {
+        'resource:///org/gnome/shell/ui/messageTray.js': (stage / 'tests/fixtures/messageTray.js').as_uri(),
         'resource:///org/gnome/shell/ui/main.js': (stage / 'tests/fixtures/main.js').as_uri(),
         'resource:///org/gnome/shell/extensions/extension.js': (stage / 'tests/fixtures/extension.js').as_uri(),
         'resource:///org/gnome/shell/misc/extensionUtils.js': (stage / 'tests/fixtures/extensionUtils.js').as_uri(),
         'resource:///org/gnome/shell/ui/panelMenu.js': (stage / 'tests/fixtures/panelMenu.js').as_uri(),
         'resource:///org/gnome/shell/ui/popupMenu.js': (stage / 'tests/fixtures/popupMenu.js').as_uri(),
+        './cornerEffect.js': (stage / 'tests/fixtures/cornerEffect.js').as_uri(),
         './packageLookup.js': (stage / 'tests/fixtures/packageLookup.js').as_uri(),
         'gi://Shell': (stage / 'tests/fixtures/shell.js').as_uri(),
         'gi://Clutter': (stage / 'tests/fixtures/clutter.js').as_uri(),

@@ -1,8 +1,10 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
 msgid ""
-msgstr "Project-Id-Version: Trait JustTiling 0.18.2\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: \nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+msgstr "Project-Id-Version: Trait JustTiling 0.23.0\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: \nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
 
 msgid " or "
+msgstr ""
+
+msgid "%s\nDisable these extensions in the Extension Manager, then resume automatic tiling."
 msgstr ""
 
 msgid "(empty identifier)"
@@ -23,13 +25,16 @@ msgstr ""
 msgid "Always-floating applications"
 msgstr ""
 
-msgid "Applied immediately to the layout. Values range from 0 to 64."
+msgid "Application list"
+msgstr ""
+
+msgid "Applications: %s"
+msgstr ""
+
+msgid "Applies to tiled and floating windows. Maximized and fullscreen windows keep their original appearance."
 msgstr ""
 
 msgid "At the work area edges"
-msgstr ""
-
-msgid "Auto-tiling paused: another window manager became active"
 msgstr ""
 
 msgid "Auto-tiling paused: another window manager is active"
@@ -65,6 +70,9 @@ msgstr ""
 msgid "Change"
 msgstr ""
 
+msgid "Changes apply immediately to gaps, corners and the focus border."
+msgstr ""
+
 msgid "Changes are saved automatically. Tiling supports one monitor."
 msgstr ""
 
@@ -77,7 +85,22 @@ msgstr ""
 msgid "Clear all learned layouts"
 msgstr ""
 
+msgid "Conflicting extensions"
+msgstr ""
+
+msgid "Conflicting extensions are no longer active. Resume automatic tiling when you are ready."
+msgstr ""
+
+msgid "Conflicts resolved. Resume automatic tiling when you are ready."
+msgstr ""
+
 msgid "Contact"
+msgstr ""
+
+msgid "Corner radius (px)"
+msgstr ""
+
+msgid "Could not open the Extension Manager. Open it from your applications menu."
 msgstr ""
 
 msgid "Cycle focus through tiled windows"
@@ -92,7 +115,13 @@ msgstr ""
 msgid "Enable automatic tiling before toggling a window."
 msgstr ""
 
+msgid "Focus border width (px)"
+msgstr ""
+
 msgid "Forget"
+msgstr ""
+
+msgid "From 1 to 8 px, drawn inside the window."
 msgstr ""
 
 msgid "Gaps"
@@ -113,6 +142,9 @@ msgstr ""
 msgid "Learn application positions and sizes"
 msgstr ""
 
+msgid "Learned applications"
+msgstr ""
+
 msgid "Learns from manual split adjustments and window swaps. Saved preferences guide new windows when space allows."
 msgstr ""
 
@@ -125,13 +157,16 @@ msgstr ""
 msgid "No application exceptions"
 msgstr ""
 
+msgid "No extension manager was found. Install GNOME Extensions to manage conflicting extensions."
+msgstr ""
+
 msgid "No learned applications"
 msgstr ""
 
 msgid "Only when the application has a single tiled window. Turning this off pauses both learning and the use of saved preferences."
 msgstr ""
 
-msgid "Other window managers are active: %s"
+msgid "Open Extension Manager"
 msgstr ""
 
 msgid "Position: %s%%, %s%% · Size: %s%% × %s%%"
@@ -140,7 +175,7 @@ msgstr ""
 msgid "Preferences…"
 msgstr ""
 
-msgid "Preserve the focused window size"
+msgid "Prefer splitting other windows"
 msgstr ""
 
 msgid "Press the desired key combination.\nBackspace disables; Enter saves; Escape cancels."
@@ -170,7 +205,13 @@ msgstr ""
 msgid "Restore the default shortcut for this action"
 msgstr ""
 
+msgid "Resume automatic tiling"
+msgstr ""
+
 msgid "Right"
+msgstr ""
+
+msgid "Round window corners"
 msgstr ""
 
 msgid "Save"
@@ -189,6 +230,9 @@ msgid "Shortcut %s unavailable: %s. Choose another shortcut in Preferences."
 msgstr ""
 
 msgid "Swap windows by dragging and dropping"
+msgstr ""
+
+msgid "Swap with a numbered window"
 msgstr ""
 
 msgid "Swap with the window above"
@@ -236,10 +280,22 @@ msgstr ""
 msgid "Toggle the window between tiled and floating"
 msgstr ""
 
+msgid "Trait JustTiling: conflicts resolved"
+msgstr ""
+
+msgid "Trait JustTiling: tiling paused"
+msgstr ""
+
 msgid "Use Super, Ctrl or Alt together with another key."
 msgstr ""
 
-msgid "When opening windows, shrink other windows first. Shrink the focused window only when necessary."
+msgid "Used by the focus border and rounded windows. Zero disables forced window rounding."
+msgstr ""
+
+msgid "Version"
+msgstr ""
+
+msgid "For equally balanced layouts, prefer splitting another window. Pinned and learned sizes take priority."
 msgstr ""
 
 msgid "Within the space chosen for the new window. In stacked splits: above or below."
@@ -254,18 +310,41 @@ msgstr ""
 msgid "the compositor refused the shortcut"
 msgstr ""
 
-
-msgid "Version"
+msgid "No pinned applications"
 msgstr ""
 
-msgid "Learned applications"
+msgid "Pin an application from the panel menu. Its saved region takes priority when space allows, independently of layout learning."
 msgstr ""
 
-msgid "Application list"
+msgid "Pin or unpin the active application"
 msgstr ""
 
-msgid "Applications: %s"
+msgid "Pin this application's position and size"
 msgstr ""
 
-msgid "Swap with a numbered window"
+msgid "Pinned applications"
+msgstr ""
+
+msgid "Select a tiled window and enable pinning in the panel menu."
+msgstr ""
+
+msgid "Select a tiled window to pin this application."
+msgstr ""
+
+msgid "Unpin"
+msgstr ""
+
+msgid "Unpin all applications"
+msgstr ""
+
+msgid "Application unpinned."
+msgstr ""
+
+msgid "Application pinned. Preferred position and size saved."
+msgstr ""
+
+msgid "Hide the panel icon"
+msgstr ""
+
+msgid "Tiling and keyboard shortcuts keep working while the icon is hidden."
 msgstr ""

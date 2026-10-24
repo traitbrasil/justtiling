@@ -12,9 +12,10 @@ from translations import compile_catalogs, DOMAIN
 
 root = Path(__file__).resolve().parents[1]
 metadata = json.loads((root / 'metadata.json').read_text())
-archive = root / 'dist' / f"{metadata['uuid']}.shell-extension.zip"
-assert metadata['uuid'] == 'just@trait.com.br', 'Unexpected public UUID'
+archive = root / 'dist' / f"trait-justtiling-{metadata['version-name']}.zip"
+assert metadata['uuid'] == 'justtiling@trait.com.br', 'Unexpected public UUID'
 assert metadata['name'] == 'Trait JustTiling'
+assert metadata['settings-schema'] == 'org.gnome.shell.extensions.justtiling', 'Keep existing user settings'
 assert 'version' not in metadata, 'EGO controls the numeric submission version'
 assert re.fullmatch(r'(?![. ]+$)[a-zA-Z0-9 .]{1,16}', metadata['version-name'])
 assert metadata['url'] == 'https://trait.li/just'
@@ -38,7 +39,7 @@ with zipfile.ZipFile(archive) as package:
     schema_file = f"schemas/{metadata['settings-schema']}.gschema.xml"
     schema = ET.fromstring(package.read(schema_file)).find('schema')
     assert schema.attrib['id'] == metadata['settings-schema']
-    assert schema.attrib['path'].startswith('/org/gnome/shell/extensions/')
+    assert schema.attrib['path'] == '/org/gnome/shell/extensions/justtiling/', 'Keep existing settings storage'
     def graph(entry):
         pending = [entry]; visited = set()
         while pending:

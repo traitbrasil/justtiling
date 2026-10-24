@@ -21,6 +21,7 @@ export const SHORTCUT_TITLES = {
     'toggle-tiling': N_("Toggle automatic tiling"),
     'swap-select': N_("Swap with a numbered window"),
     'cycle-focus': N_("Cycle focus through tiled windows"),
+    'toggle-pin': N_("Pin or unpin the active application"),
     'toggle-floating': N_("Toggle the window between tiled and floating"),
     'swap-left': N_("Swap with the window on the left"), 'swap-right': N_("Swap with the window on the right"),
     'swap-up': N_("Swap with the window above"), 'swap-down': N_("Swap with the window below"),

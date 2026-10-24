@@ -1,3 +1,5 @@
+import {balancedLayout, insertBalanced} from '../src/layout/balance.js';
+import {pinnedLayout, withoutReservations} from '../src/pinning.js';
 import {NumberChoice} from '../src/numberChoice.js';
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {ids, insert, remove, sameRect, solve} from '../src/layout/tree.js';
@@ -9,10 +11,11 @@ import {PackageIdentity, packageOwner, desktopFiles} from '../src/packageIdentit
 import {applyLearning, readLearning, writeLearning, normalizedFrame, learningIdentity, uniqueLearningKey} from '../src/learning.js';
 import {processLineage} from '../src/processInfo.js';
 import {Controller} from '../src/controller.js';
-import {appIdentities, applicationIdentities, canonicalAppExceptions, constraints, exclusion, matchesApp, setAppException} from '../src/rules.js';
+import {appIdentities, applicationIdentities, canonicalAppExceptions, constraints, exclusion, focusBorderEligible, matchesApp, setAppException} from '../src/rules.js';
 import {clampRect, frameLimits} from '../src/geometry.js';
 import {Connections} from '../src/resources.js';
 import {canonicalAccelerator, Keybindings} from '../src/keybindings.js';
+import {cornerGeometry, cornerRadius, framebufferMapping, cornerPaintVolume} from '../src/cornerGeometry.js';
 import {migrateShortcuts} from '../src/settings.js';
 
 import {format, N_} from '../src/strings.js';
@@ -327,6 +330,21 @@ test('explicit user always-on-top choices survive floating rules, fullscreen and
     assert(a.read(1).above); equal(a.aboveCalls.length, 0);
     c.stop(); assert(a.read(1).above); equal(a.aboveCalls.length, 0);
 });
+test('focus highlighting accepts excluded application windows without tiling or identity readiness', () => {
+    const base = {alive: true, mapped: true, appWindow: true, inScope: true};
+    assert(focusBorderEligible(base));
+    assert(focusBorderEligible({...base, normal: false, transient: true, ready: false,
+        resizable: false, skipTaskbar: true, state: 'excluded'}));
+    assert(focusBorderEligible({...base, state: 'pending', identityPending: true}));
+    assert(focusBorderEligible({...base, state: 'floating', appId: 'any.desktop'}));
+});
+test('focus highlighting excludes maximized, hidden and system windows', () => {
+    const base = {alive: true, mapped: true, appWindow: true, inScope: true};
+    for (const flags of [{maximized: true}, {fullscreen: true}, {minimized: true}, {overrideRedirect: true},
+        {mapped: false}, {alive: false}, {inScope: false}, {appWindow: false}])
+        assert(!focusBorderEligible({...base, ...flags}));
+    assert(!focusBorderEligible(null));
+});
 test('dialogs, transients and special windows never get moved or raised', () => {
     const {adapter: a, controller: c} = setup([[1, {normal: false}], [2, {transient: true}],
         [3, {overrideRedirect: true}], [4, {skipTaskbar: true}], [5, {sticky: true}]]);
@@ -608,6 +626,12 @@ test('window leaving target restores and is never moved back to target', () => {
     equal(c.tree, null);
     equal(a.restores, [1]);
     equal(c.records.get(1).state, 'excluded');
+    c.stop();
+});
+test('conflict suspension can use an actionable warning without duplicate generic notices', () => {
+    const {adapter: a, controller: c} = setup();
+    c.suspend('conflict', false);
+    assert(c.suspended); equal(a.messages.filter(message => message.level === 'notice').length, 0);
     c.stop();
 });
 test('second monitor suspends, restores once and never resumes automatically', () => {
@@ -927,7 +951,7 @@ test('duplicate own shortcuts and compositor refusal do not leak bindings', () =
 
 function migrationSettings(values = {}) {
     const saved = new Map(Object.entries(values));
-    const defaults = {'toggle-tiling': ['<Super>t'], 'toggle-floating': ['<Super>o'], 'cycle-focus': ['<Super>f'], 'swap-select': ['<Super>c']};
+    const defaults = {'toggle-pin': ['<Super>y'], 'toggle-tiling': ['<Super>t'], 'toggle-floating': ['<Super>g'], 'cycle-focus': ['<Super>f'], 'swap-select': ['<Super>c']};
     return {
         saved, get_int: key => saved.get(key) ?? 0, set_int: (key, value) => saved.set(key, value),
         get_user_value: key => saved.has(key) ? {} : null,
@@ -939,8 +963,8 @@ test('shortcut migration upgrades only known legacy overrides', () => {
         'toggle-floating': ['<Super><Control><Alt>f']});
     migrateShortcuts(settings);
     equal(settings.get_strv('toggle-tiling'), ['<Super>t']);
-    equal(settings.get_strv('toggle-floating'), ['<Super>o']);
-    equal(settings.get_int('preferences-version'), 2);
+    equal(settings.get_strv('toggle-floating'), ['<Super>g']);
+    equal(settings.get_int('preferences-version'), 4);
 });
 test('shortcut migration preserves customized, empty and multiple accelerators', () => {
     for (const value of [[], ['<Super>g'], ['<Super><Control><Alt>f', '<Super>g']]) {
@@ -1546,7 +1570,7 @@ test('runtime window-backed groups and cyclic transient links are safe and do no
     equal(canonicalAppExceptions(['wm-class:Main'], windows), ['wm-class:Main']);
 });
 
-test('controller preserves previous tiled focus when the newly opening window grabs focus', () => {
+test('controller balances unsaved sizes even when a new window grabs focus early', () => {
     const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
     assert(c.preserveFocusedWindow, 'Focus preservation defaults on');
     c.tree = {axis: 'x', ratio: 0.7, a: {id: 1}, b: {id: 2}};
@@ -1555,7 +1579,9 @@ test('controller preserves previous tiled focus when the newly opening window gr
     const before = {...a.read(1).rect};
     a.add(3); a.currentFocus = 3;
     c.event({kind: 'changed'}); c.event({kind: 'focus', id: 3}); clock.run();
-    equal(a.read(1).rect, before); equal(c.records.get(3).state, 'tiled');
+    assert(a.read(1).rect.width < before.width); equal(c.records.get(3).state, 'tiled');
+    const areas = [1, 2, 3].map(id => a.read(id).rect.width * a.read(id).rect.height);
+    assert(Math.max(...areas) / Math.min(...areas) < 1.03, 'Unsaved focus size must not override balanced areas');
     c.stop();
 });
 test('turning preservation off keeps existing geometry and resumes splitting the focused tile', () => {
@@ -1735,7 +1761,7 @@ test('manual split resize learns only converged geometry and restores it on late
     const {clock, adapter: a, controller: c} = setup([[1, {wmClass: 'Example'}], [2, {wmClass: 'Other'}]]);
     assert(c.learnLayouts); let saved;
     c.onLearnedLayouts = apps => saved = writeLearning(apps);
-    beginEast(c); a.windows.get(1).rect.width += 100; endEast(c); clock.run();
+    beginEast(c); a.windows.get(1).rect.width += 50; endEast(c); clock.run();
     assert(saved); const expected = {...a.read(1).rect};
     equal(readLearning(saved)['wm-class:Example'], normalizedFrame(expected, AREA, GAPS));
     a.windows.delete(2); c.event({kind: 'closed', id: 2}); clock.run();
@@ -1745,7 +1771,7 @@ test('manual split resize learns only converged geometry and restores it on late
 });
 test('new controller session restores learned layout with different native window IDs', () => {
     const first = setup([[1, {wmClass: 'Example'}], [2, {wmClass: 'Other'}]]);
-    beginEast(first.controller); first.adapter.windows.get(1).rect.width += 100; endEast(first.controller); first.clock.run();
+    beginEast(first.controller); first.adapter.windows.get(1).rect.width += 50; endEast(first.controller); first.clock.run();
     const saved = writeLearning(first.controller.learnedLayouts), expected = first.adapter.read(1).rect;
     first.controller.stop();
     const clock = new FakeClock(), a = new FakeAdapter(clock); a.add(40, {wmClass: 'Example'}); a.add(41, {wmClass: 'Other'});
@@ -1777,7 +1803,7 @@ test('disabling learning neither records manual actions nor applies saved prefer
     c.learnedLayouts = {'wm-class:Example': {x: 0, y: 0, width: 0.2, height: 1}};
     beginEast(c); a.windows.get(1).rect.width += 90; endEast(c); clock.run(); equal(saves, 0);
     const tree = pair('x'), specs = pairSpecs();
-    assert(c.learnedInsertion(tree, 2, specs, AREA, solve(tree, AREA, specs, GAPS)) === tree); c.stop();
+    equal(c.preferredBalance(tree, AREA, specs, GAPS), tree); c.stop();
 });
 test('ambiguous application instances, failed resize and stopped sessions never save guessed layouts', () => {
     for (const mode of ['multiple', 'failure', 'stop']) {
@@ -1912,19 +1938,380 @@ test('number choices support single digits, keypad values and ambiguous multi-di
 test('shortcut migration upgrades the previous defaults and preserves custom focus', () => {
     const settings = migrationSettings({'preferences-version': 1, 'toggle-floating': ['<Super>f'], 'cycle-focus': ['<Super>c']});
     migrateShortcuts(settings);
-    equal(settings.get_strv('toggle-floating'), ['<Super>o']); equal(settings.get_strv('cycle-focus'), ['<Super>f']);
+    equal(settings.get_strv('toggle-floating'), ['<Super>g']); equal(settings.get_strv('cycle-focus'), ['<Super>f']);
     const custom = migrationSettings({'preferences-version': 1, 'cycle-focus': ['<Super>x']});
     migrateShortcuts(custom); equal(custom.get_strv('cycle-focus'), ['<Super>x']);
 });
 
 test('migration gives custom bindings priority over new default shortcuts', () => {
     const settings = migrationSettings({'preferences-version': 1,
-        'toggle-tiling': ['<Super>c'], 'toggle-floating': ['<Super>f'], 'cycle-focus': ['<Super>o']});
+        'toggle-tiling': ['<Super>c'], 'toggle-floating': ['<Super>f'], 'cycle-focus': ['<Super>g']});
     migrateShortcuts(settings);
     equal(settings.get_strv('toggle-tiling'), ['<Super>c']);
-    equal(settings.get_strv('cycle-focus'), ['<Super>o']);
+    equal(settings.get_strv('cycle-focus'), ['<Super>g']);
     equal(settings.get_strv('swap-select'), []);
     equal(settings.get_strv('toggle-floating'), []);
 });
 
+test('rounded corner geometry aligns the frame and radius across shadow margins, scales and monitor origins', () => {
+    const frame = {x: -500, y: 70, width: 300, height: 200};
+    const buffer = {x: -510, y: 50, width: 320, height: 240};
+    equal(cornerGeometry({frame, buffer, width: 320, height: 240}), {bounds: [10, 20, 300, 200], scale: 1, radius: 8});
+    equal(cornerGeometry({frame, buffer, width: 640, height: 480}), {bounds: [20, 40, 600, 400], scale: 2, radius: 16});
+    equal(cornerGeometry({frame, buffer, width: 480, height: 360}), {bounds: [15, 30, 450, 300], scale: 1.5, radius: 12});
+});
+test('manual corner radius accepts square corners and caps values independently of window scale', () => {
+    equal(cornerRadius(), 8); equal(cornerRadius(0), 0); equal(cornerRadius(64), 64);
+    equal(cornerRadius(-1), 0); equal(cornerRadius(200), 64); equal(cornerRadius(NaN), 8);
+    const frame = {x: 0, y: 0, width: 300, height: 100};
+    const visual = {frame, buffer: frame, width: 600, height: 200};
+    equal(cornerGeometry(visual, 16).radius, 32);
+    equal(cornerGeometry(visual, 16).scale, 2);
+    equal(cornerGeometry(visual, 0).radius, 0);
+    equal(cornerGeometry(visual, 64).radius, 100);
+});
+test('rounded corner geometry rejects unallocated buffers and caps the radius for tiny windows', () => {
+    const frame = {x: 0, y: 0, width: 4, height: 6};
+    equal(cornerGeometry({frame, buffer: frame, width: 4, height: 6}).radius, 2);
+    for (const width of [0, -1, NaN, Infinity])
+        equal(cornerGeometry({frame, buffer: frame, width, height: 6}), null);
+    equal(cornerGeometry(null), null);
+    equal(cornerGeometry({frame, buffer: {...frame, width: 0}, width: 4, height: 6}), null);
+});
+test('rounded shadows expand the paint volume without shrinking existing native shadows', () => {
+    equal(cornerPaintVolume({x: 0, y: 0, width: 300, height: 200}, [0, 0, 300, 200]),
+        {x: -20, y: -20, width: 340, height: 240});
+    equal(cornerPaintVolume({x: -40, y: -30, width: 380, height: 270}, [0, 0, 300, 200]),
+        {x: -40, y: -30, width: 380, height: 270});
+});
+test('offscreen mapping includes paint-volume expansion and integer resource scaling', () => {
+    const volume = {x: -10, y: -20, width: 320, height: 240};
+    equal(framebufferMapping(volume, 323, 243, 1), [-12, -22, 323, 243]);
+    equal(framebufferMapping(volume, 646, 486, 1.5), [-12, -22, 323, 243]);
+    equal(framebufferMapping(volume, 646, 486, 2), [-12, -22, 323, 243]);
+    equal(framebufferMapping(volume, 0, 486, 2), null);
+});
+
+test('floating shortcut migration replaces Super O and preserves custom, disabled and multiple bindings', () => {
+    const settings = migrationSettings({'preferences-version': 2, 'toggle-floating': ['<Mod4>O']});
+    migrateShortcuts(settings);
+    equal(settings.get_strv('toggle-floating'), ['<Super>g']);
+    equal(settings.get_int('preferences-version'), 4);
+    settings.set_strv('toggle-floating', ['<Super>o']); migrateShortcuts(settings);
+    equal(settings.get_strv('toggle-floating'), ['<Super>o']); // A later explicit choice belongs to the user.
+    for (const value of [[], ['<Super>x'], ['<Super>f'], ['<Super>o', '<Alt>g']]) {
+        const custom = migrationSettings({'preferences-version': 2, 'toggle-floating': value});
+        migrateShortcuts(custom); equal(custom.get_strv('toggle-floating'), value);
+    }
+});
+test('floating shortcut migration protects another action already using Super G', () => {
+    const settings = migrationSettings({'preferences-version': 2,
+        'toggle-floating': ['<Super>o'], 'cycle-focus': ['<Super>g']});
+    migrateShortcuts(settings);
+    equal(settings.get_strv('cycle-focus'), ['<Super>g']);
+    equal(settings.get_strv('toggle-floating'), []);
+});
+
+
+test('pins reserve the preferred half while other windows share the remainder', () => {
+    const area = {x: 0, y: 0, width: 1200, height: 800}, gaps = {inner: 10, outer: 0};
+    const specs = new Map([[1, spec()], [2, spec()], [3, spec()]]);
+    const tree = {axis: 'x', ratio: 0.5, a: {id: 2}, b: {axis: 'y', a: {id: 1}, b: {id: 3}}};
+    const goals = new Map([[1, {x: 0, y: 0, width: 0.5, height: 1}]]);
+    const next = pinnedLayout(tree, goals, area, specs, gaps), plan = checkPlan(next, area, specs, gaps);
+    equal(plan.frames.get(1), {x: 0, y: 0, width: 600, height: 800});
+    assert(plan.frames.get(2).x >= 610 && plan.frames.get(3).x >= 610);
+});
+test('a sole pinned window retains its rectangle and empty regions are not swap targets', () => {
+    const area = {x: -100, y: 70, width: 1000, height: 800}, gaps = {inner: 10, outer: 0};
+    const specs = new Map([[1, spec()]]), goals = new Map([[1, {x: 0.25, y: 0.25, width: 0.5, height: 0.5}]]);
+    const tree = pinnedLayout({id: 1}, goals, area, specs, gaps), plan = checkPlan(tree, area, specs, gaps);
+    equal(plan.frames.get(1), {x: 150, y: 270, width: 500, height: 400});
+    equal(ids(tree), [1]); equal(plan.cells.size, 1);
+    equal(withoutReservations(tree), {id: 1});
+    equal(beginDrag(tree, 1, plan.frames, area, specs, gaps), null);
+});
+test('center pins allow windows on multiple sides instead of blocking the entire screen', () => {
+    const area = {x: 0, y: 0, width: 1200, height: 800}, gaps = {inner: 10, outer: 0};
+    const specs = new Map([1, 2, 3, 4, 5].map(id => [id, spec({minWidth: 270, minHeight: 300})]));
+    let tree = null;
+    for (const [id] of specs) tree = insert(tree, id, specs, area, gaps);
+    assert(tree);
+    const goals = new Map([[1, {x: 0.25, y: 0.25, width: 0.5, height: 0.5}]]);
+    const next = pinnedLayout(tree, goals, area, specs, gaps), plan = checkPlan(next, area, specs, gaps);
+    equal(plan.frames.get(1), {x: 300, y: 200, width: 600, height: 400});
+    assert([...plan.frames].filter(([id, r]) => id !== 1 && r.x < 300).length > 0);
+    assert([...plan.frames].filter(([id, r]) => id !== 1 && r.x >= 910).length > 0);
+});
+test('multiple pinned applications keep non-overlapping saved regions', () => {
+    const area = {x: 0, y: 0, width: 1200, height: 800}, gaps = {inner: 10, outer: 0};
+    const specs = new Map([1, 2, 3].map(id => [id, spec()]));
+    const tree = {axis: 'x', a: {id: 1}, b: {axis: 'y', a: {id: 2}, b: {id: 3}}};
+    const goals = new Map([[1, {x: 0, y: 0, width: 0.5, height: 1}],
+        [2, {x: 610 / 1200, y: 0, width: 590 / 1200, height: 0.5}]]);
+    const next = pinnedLayout(tree, goals, area, specs, gaps), plan = checkPlan(next, area, specs, gaps);
+    equal(plan.frames.get(1), {x: 0, y: 0, width: 600, height: 800});
+    equal(plan.frames.get(2), {x: 610, y: 0, width: 590, height: 400});
+});
+test('pins yield only as space requires and recover their stored position after closures', () => {
+    const area = {x: 0, y: 0, width: 1200, height: 800}, gaps = {inner: 10, outer: 0};
+    const specs = new Map([[1, spec()], [2, spec({minWidth: 650, minHeight: 600})]]);
+    const goals = new Map([[1, {x: 0, y: 0, width: 0.5, height: 1}]]), saved = JSON.stringify([...goals]);
+    const tree = {axis: 'x', a: {id: 1}, b: {id: 2}};
+    const compressed = pinnedLayout(tree, goals, area, specs, gaps), plan = checkPlan(compressed, area, specs, gaps);
+    assert(plan.frames.get(1).width === 540 && plan.frames.get(1).height === 800, 'Pin should yield only the required width');
+    equal(JSON.stringify([...goals]), saved);
+    const restored = pinnedLayout(remove(compressed, 2), goals, area, specs, gaps);
+    equal(checkPlan(restored, area, specs, gaps).frames.get(1), {x: 0, y: 0, width: 600, height: 800});
+});
+test('controller pins survive pressure, closure, reopening and learning disabled', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'other.desktop'}]]);
+    c.learnLayouts = false;
+    const wanted = {...a.read(1).rect};
+    let saved;
+    c.onPinnedLayouts = value => { saved = JSON.parse(JSON.stringify(value)); };
+    c.togglePin(1); clock.run();
+    assert(saved['app-id:browser.desktop']);
+    equal(a.read(1).rect, wanted);
+    for (let id = 3; id <= 7; id++) { a.add(id, {appId: `app${id}.desktop`}); c.event({kind: 'created', id}); clock.run(); }
+    equal(c.pinnedLayouts, saved);
+    for (let id = 2; id <= 7; id++) { a.windows.delete(id); c.event({kind: 'closed', id}); clock.run(); }
+    equal(a.read(1).rect, wanted);
+    a.windows.delete(1); c.event({kind: 'closed', id: 1}); clock.run();
+    a.add(20, {appId: 'browser.desktop'}); c.event({kind: 'created', id: 20}); clock.run();
+    equal(a.read(20).rect, wanted);
+    c.togglePin(20); clock.run();
+    equal(Object.keys(c.pinnedLayouts), []);
+    equal(a.read(20).rect.width, AREA.width - 16);
+    assert(!a.messages.some(message => message.level === 'error'));
+});
+test('only one instance per application reserves space, floating rules take precedence', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'browser.desktop'}]]);
+    c.togglePin(2); clock.run();
+    equal([...c.pinGoals().keys()], [2]);
+    a.add(3, {appId: 'browser.desktop'}); c.event({kind: 'created', id: 3}); clock.run();
+    equal([...c.pinGoals().keys()], [2]);
+    c.floatingApps = ['app-id:browser.desktop']; c.schedule(0); clock.run();
+    assert([...c.records.values()].every(record => record.state === 'floating'));
+    equal(c.pinGoals().size, 0);
+    assert(Object.keys(c.pinnedLayouts).length === 1, 'Floating temporarily must not erase the anchor');
+});
+
+test('manual split edits and keyboard swaps update explicit pins with learning disabled', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'other.desktop'}]]);
+    c.learnLayouts = false;
+    let pinSaves = 0, learnedSaves = 0;
+    c.onPinnedLayouts = () => pinSaves++;
+    c.onLearnedLayouts = () => learnedSaves++;
+    c.togglePin(1); clock.run();
+    const original = c.pinnedLayouts['app-id:browser.desktop'].width;
+    beginEast(c); assert(c.resize);
+    a.windows.get(1).rect.width += 90; endEast(c); clock.run();
+    assert(c.pinnedLayouts['app-id:browser.desktop'].width > original);
+    const resized = {...a.read(1).rect};
+    c.schedule(0); clock.run(); equal(a.read(1).rect, resized);
+    a.focusedId = () => 1; c.swapDirection('right'); clock.run();
+    assert(c.pinnedLayouts['app-id:browser.desktop'].x > 0);
+    assert(pinSaves === 3 && learnedSaves === 0);
+    c.stop(); assert(c.pinOwners.size === 0 && c.pinCache.size === 0);
+});
+test('floating, maximizing and restoring keep the saved pin without reserving hidden space', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'other.desktop'}]]);
+    c.togglePin(1); clock.run();
+    const wanted = {...a.read(1).rect}, saved = JSON.stringify(c.pinnedLayouts);
+    c.toggleWindow(1); clock.run();
+    equal(a.read(2).rect.width, AREA.width - 16);
+    equal(JSON.stringify(c.pinnedLayouts), saved);
+    c.toggleWindow(1); clock.run(); equal(a.read(1).rect, wanted);
+    a.windows.get(1).maximized = true; c.event({kind: 'changed', id: 1}); clock.run();
+    equal(a.read(2).rect.width, AREA.width - 16);
+    a.windows.get(1).maximized = false; c.event({kind: 'changed', id: 1}); clock.run();
+    equal(a.read(1).rect, wanted); equal(JSON.stringify(c.pinnedLayouts), saved);
+    c.stop();
+});
+test('pin owners use workspace object identity and survive switching between identical applications', () => {
+    const {clock, a, c, first, second, select} = workspaceSetup();
+    a.windows.get(1).appId = 'browser.desktop'; a.windows.get(2).appId = 'browser.desktop';
+    a.windows.get(3).appId = 'browser.desktop';
+    c.togglePin(2); clock.run();
+    const wanted = {...a.read(2).rect};
+    equal([...c.pinGoals().keys()], [2]);
+    select(second); equal([...c.pinGoals().keys()], [3]);
+    equal(a.read(3).rect, wanted);
+    select(first); equal([...c.pinGoals().keys()], [2]);
+    assert(c.pinOwners.get(first).get('app-id:browser.desktop') === 2 &&
+        c.pinOwners.get(second).get('app-id:browser.desktop') === 3);
+    a.domains = [first]; c.event({kind: 'workspace'}); clock.run();
+    assert(!c.pinCache.has(second) && !c.pinOwners.has(second));
+    c.stop();
+});
+test('pinned regions scale to changed work areas without modifying persisted proportions', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'other.desktop'}]]);
+    c.togglePin(1); clock.run();
+    const goal = c.pinnedLayouts['app-id:browser.desktop'], saved = JSON.stringify(c.pinnedLayouts);
+    a.workarea = {x: -200, y: 60, width: 1800, height: 1000}; c.event({kind: 'changed'}); clock.run();
+    assert(Math.abs(a.read(1).rect.width - goal.width * (1800 - 16)) <= 1);
+    assert(a.read(1).rect.x === -192);
+    equal(JSON.stringify(c.pinnedLayouts), saved);
+    c.stop();
+});
+test('generated pin layouts stay valid across varied gaps, positions, closures and size hints', () => {
+    let cases = 0;
+    for (const gap of [0, 8, 15]) for (const count of [2, 3, 4, 6, 8]) {
+        const area = {x: -130, y: 53, width: 1800, height: 1100}, gaps = {inner: gap, outer: gap};
+        const specs = new Map(Array.from({length: count}, (_, i) => [i + 1, spec({minWidth: 160, minHeight: 100})]));
+        let tree = null;
+        for (const [id] of specs) tree = insert(tree, id, specs, area, gaps);
+        const before = checkPlan(tree, area, specs, gaps);
+        for (const id of [1, count]) {
+            const saved = normalizedFrame(before.frames.get(id), area, gaps);
+            const goals = new Map([[id, saved]]);
+            const next = pinnedLayout(tree, goals, area, specs, gaps);
+            const plan = checkPlan(next, area, specs, gaps);
+            assert(sameRect(plan.frames.get(id), before.frames.get(id), 1));
+            for (const other of ids(next).filter(key => key !== id)) {
+                const smaller = pinnedLayout(remove(next, other), goals, area, specs, gaps);
+                checkPlan(smaller, area, specs, gaps);
+            }
+            cases++;
+        }
+    }
+    equal(cases, 30);
+});
+
+test('pin shortcut migration preserves existing customized bindings instead of taking over Super Y', () => {
+    const settings = migrationSettings({'preferences-version': 3, 'cycle-focus': ['<Super>y'],
+        'toggle-floating': ['<Super>o']});
+    migrateShortcuts(settings);
+    equal(settings.get_strv('cycle-focus'), ['<Super>y']);
+    equal(settings.get_strv('toggle-floating'), ['<Super>o']);
+    equal(settings.get_strv('toggle-pin'), []);
+    equal(settings.get_int('preferences-version'), 4);
+    const customized = migrationSettings({'preferences-version': 3, 'toggle-pin': ['<Super><Shift>z']});
+    migrateShortcuts(customized); equal(customized.get_strv('toggle-pin'), ['<Super><Shift>z']);
+});
+
+function balancedSetup(count = 2, learned = {}, pinned = {}) {
+    const clock = new FakeClock(), adapter = new FakeAdapter(clock);
+    adapter.workarea = {x: 0, y: 0, width: 1200, height: 900};
+    for (let id = 1; id <= count; id++) adapter.add(id, {appId: `app${id}.desktop`});
+    const controller = new Controller(adapter, clock, {inner: 0, outer: 0});
+    controller.learnedLayouts = learned; controller.pinnedLayouts = pinned;
+    adapter.event = e => controller.event(e);
+    controller.start(); clock.run();
+    const open = id => { adapter.add(id, {appId: `app${id}.desktop`}); controller.event({kind: 'created', id}); clock.run(); };
+    return {clock, adapter, controller, open};
+}
+test('third unconfigured window gets one third of the screen despite focus preservation', () => {
+    const {adapter: a, controller: c, open} = balancedSetup();
+    equal(a.read(1).rect.width * a.read(1).rect.height, 540000);
+    c.event({kind: 'focus', id: 1});
+    open(3);
+    for (const id of [1, 2, 3]) equal(a.read(id).rect.width * a.read(id).rect.height, 360000);
+    equal(Object.keys(c.learnedLayouts), []); c.stop();
+});
+test('a learned half-screen region takes priority and other windows get one quarter each', () => {
+    const saved = {'app-id:app1.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+    const {adapter: a, controller: c, open} = balancedSetup(2, saved);
+    let writes = 0; c.onLearnedLayouts = () => writes++;
+    open(3);
+    equal(a.read(1).rect, {x: 0, y: 0, width: 600, height: 900});
+    for (const id of [2, 3]) equal(a.read(id).rect.width * a.read(id).rect.height, 270000);
+    equal(c.learnedLayouts, saved); equal(writes, 0); c.stop();
+});
+test('pinned half-screen regions leave equally sized cells for all unconfigured windows', () => {
+    const pinned = {'app-id:app1.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+    const {adapter: a, controller: c, open} = balancedSetup(2, {}, pinned);
+    for (const id of [3, 4, 5]) {
+        open(id);
+        equal(a.read(1).rect, {x: 0, y: 0, width: 600, height: 900});
+        const areas = Array.from({length: id - 1}, (_, i) => a.read(i + 2).rect).map(r => r.width * r.height);
+        assert(Math.max(...areas) / Math.min(...areas) < 1.01, `Free regions must balance independently of pinned regions: ${id} ${JSON.stringify(areas)} ${JSON.stringify(c.tree)}`);
+    }
+    equal(c.pinnedLayouts, pinned); c.stop();
+});
+test('learned sizes remain effective inside the free region around a pinned application', () => {
+    const pinned = {'app-id:app1.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+    const learned = {'app-id:app2.desktop': {x: 0.5, y: 0, width: 0.5, height: 0.5}};
+    const {adapter: a, controller: c, open} = balancedSetup(2, learned, pinned);
+    open(3); open(4);
+    equal(a.read(1).rect, {x: 0, y: 0, width: 600, height: 900});
+    equal(a.read(2).rect, {x: 600, y: 0, width: 600, height: 450});
+    equal(a.read(3).rect.width * a.read(3).rect.height, 135000);
+    equal(a.read(4).rect.width * a.read(4).rect.height, 135000);
+    c.stop();
+});
+test('closing windows balances the remaining unsaved areas without writing learned sizes', () => {
+    const {clock, adapter: a, controller: c, open} = balancedSetup();
+    open(3); open(4); open(5);
+    let writes = 0; c.onLearnedLayouts = () => writes++;
+    for (const id of [4, 2]) {
+        a.windows.delete(id); c.event({kind: 'closed', id}); clock.run();
+        const areas = ids(c.tree).map(key => a.read(key).rect).map(r => r.width * r.height);
+        assert(Math.max(...areas) / Math.min(...areas) < 1.01);
+    }
+    equal(writes, 0); c.stop();
+});
+test('balanced insertion respects constrained applications and never mutates the previous tree', () => {
+    const area = {x: -51, y: 31, width: 1200, height: 900}, gaps = {inner: 15, outer: 15};
+    const tree = {axis: 'x', ratio: 0.9, a: {id: 1}, b: {id: 2}}, saved = JSON.stringify(tree);
+    const specs = new Map([[1, spec({minWidth: 700, minHeight: 600})], [2, spec()], [3, spec()]]);
+    const next = insertBalanced(tree, 3, specs, area, gaps, 1, 'left');
+    assert(next); checkPlan(next, area, specs, gaps); equal(JSON.stringify(tree), saved);
+    specs.set(4, spec({minWidth: 2000, minHeight: 2000}));
+    equal(insertBalanced(next, 4, specs, area, gaps), null);
+});
+test('repeated balanced insertions avoid exponentially shrinking leaves with gaps and odd dimensions', () => {
+    for (const side of ['left', 'right']) {
+        const area = {x: -301, y: 31, width: 1701, height: 1003}, gaps = {inner: 15, outer: 15};
+        const specs = new Map(); let tree = null;
+        for (let id = 1; id <= 12; id++) {
+            specs.set(id, spec({minWidth: 100, minHeight: 80}));
+            tree = insertBalanced(tree, id, specs, area, gaps, id - 1, side);
+            const plan = checkPlan(tree, area, specs, gaps), areas = [...plan.frames.values()].map(r => r.width * r.height);
+            assert(Math.max(...areas) / Math.min(...areas) < 1.15, 'Repeated insertions must keep comparable usable areas');
+        }
+    }
+});
+
+test('landscape layouts prefer stacking over equally sized tall columns', () => {
+    const area = {x: 0, y: 0, width: 1000, height: 900}, gaps = {inner: 15, outer: 0};
+    const specs = new Map([[1, spec()], [2, spec()]]);
+    const tree = balancedLayout({axis: 'x', ratio: 0.5, a: {id: 1}, b: {id: 2}}, area, specs, gaps);
+    const plan = checkPlan(tree, area, specs, gaps);
+    assert([...plan.frames.values()].every(r => r.width > r.height), 'Prefer wide rows instead of tall columns');
+});
+test('learned full-height half-screen app yields temporarily around a pinned browser to avoid thin columns', () => {
+    const clock = new FakeClock(), a = new FakeAdapter(clock);
+    a.workarea = {x: 0, y: 24, width: 3840, height: 1080};
+    a.add(1, {appId: 'browser.desktop'}); a.add(2, {appId: 'chat.desktop'});
+    const c = new Controller(a, clock, {inner: 15, outer: 15});
+    a.event = e => c.event(e);
+    c.pinnedLayouts = {'app-id:browser.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+    c.learnedLayouts = {'app-id:chat.desktop': {x: 0.5, y: 0, width: 0.5, height: 1}};
+    const saved = JSON.stringify(c.learnedLayouts), pins = JSON.stringify(c.pinnedLayouts);
+    let writes = 0; c.onLearnedLayouts = () => writes++; c.onPinnedLayouts = () => writes++;
+    c.start(); clock.run();
+    const browser = {...a.read(1).rect};
+    for (const id of [3, 4, 5]) {
+        a.add(id, {appId: `ordinary${id}.desktop`}); c.event({kind: 'created', id}); clock.run();
+        equal(a.read(1).rect, browser);
+        for (let key = 3; key <= id; key++) {
+            const r = a.read(key).rect;
+            assert(r.width >= r.height, `Unconfigured window must be landscape: ${id} ${key} ${JSON.stringify(r)}`);
+        }
+        checkPlan(c.tree, a.area(), c.layoutSpecs(), c.gaps);
+        equal(JSON.stringify(c.learnedLayouts), saved); equal(JSON.stringify(c.pinnedLayouts), pins);
+    }
+    for (const id of [3, 4, 5]) { a.windows.delete(id); c.event({kind: 'closed', id}); clock.run(); }
+    equal(a.read(2).rect.height, browser.height);
+    equal(writes, 0); c.stop();
+});
+test('portrait screens and application minimum sizes remain valid when landscape geometry is impossible', () => {
+    const area = {x: 0, y: 0, width: 700, height: 1400}, gaps = {inner: 15, outer: 15};
+    const specs = new Map([[1, spec({minWidth: 500, minHeight: 600})], [2, spec({minWidth: 500, minHeight: 600})]]);
+    const tree = insertBalanced({id: 1}, 2, specs, area, gaps);
+    const plan = checkPlan(tree, area, specs, gaps);
+    assert(plan.frames.size === 2, 'A shape preference must never reject a feasible native minimum');
+});
 print(`\n${passed} tests passed. Pure GJS tests: no compositor, D-Bus session or window mutation.`);

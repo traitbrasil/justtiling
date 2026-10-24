@@ -6,4 +6,5 @@ export const tracker = {
     emit() { for (const {fn} of [...handlers.values()]) fn(this); },
     get_window_app(win) { return win.app ?? null; },
 };
-export default {ActionMode: {NORMAL: 1, POPUP: 2}, WindowTracker: {get_default: () => tracker}};
+export const appSystem = {apps: new Map(), lookup_app(id) { return this.apps.get(id) ?? null; }};
+export default {AppSystem: {get_default: () => appSystem}, ActionMode: {NORMAL: 1, POPUP: 2}, WindowTracker: {get_default: () => tracker}};

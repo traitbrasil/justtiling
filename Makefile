@@ -1,4 +1,4 @@
-.PHONY: test test-shell test-preferences check check-api package test-package submission
+.PHONY: test-corners test test-shell test-preferences check check-api package test-package submission
 
 test:
 	gjs -m tests/run.js
@@ -24,3 +24,6 @@ package: check test
 
 submission: package
 	python3 tools/check-submission.py
+
+test-corners:
+	python3 tools/test-corner-shader.py

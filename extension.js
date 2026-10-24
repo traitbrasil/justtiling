@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import {N_, format} from './src/strings.js';
-import {_} from './src/i18n.js';
+import {N_} from './src/strings.js';
 import GLib from 'gi://GLib';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {readLearning, writeLearning} from './src/learning.js';
@@ -10,18 +9,17 @@ import {Connections} from './src/resources.js';
 import {ShortcutOverrides} from './src/shortcutOverrides.js';
 import {Keybindings} from './src/keybindings.js';
 import {migrateShortcuts} from './src/settings.js';
+import {RoundedCorners} from './src/roundedCorners.js';
 import {FocusBorder} from './src/focusBorder.js';
 import {NumberedSwap} from './src/numberedSwap.js';
 import {SwapPreview} from './src/swapPreview.js';
 import {Indicator} from './src/indicator.js';
+import {ConflictNotice} from './src/conflictNotice.js';
 
 export default class JustTiling extends Extension {
     enable() {
         try {
             this._adapter = new ShellAdapter();
-            const conflicts = this._adapter.conflicts();
-            if (conflicts.length)
-                throw new Error(format(_("Other window managers are active: %s"), conflicts.join(', ')));
             this._settings = this.getSettings();
             migrateShortcuts(this._settings);
             this._connections = new Connections();
@@ -36,6 +34,8 @@ export default class JustTiling extends Extension {
             };
             this._controller = new Controller(this._adapter, clock, this._gaps());
             this._controller.floatingApps = this._settings.get_strv('floating-apps');
+            this._controller.pinnedLayouts = readLearning(this._settings.get_string('pinned-layouts'));
+            this._controller.onPinnedLayouts = apps => this._settings.set_string('pinned-layouts', writeLearning(apps));
             this._controller.learnLayouts = this._settings.get_boolean('learn-layouts');
             this._controller.learnedLayouts = readLearning(this._settings.get_string('learned-layouts'));
             this._controller.onLearnedLayouts = apps => this._settings.set_string('learned-layouts', writeLearning(apps));
@@ -45,14 +45,20 @@ export default class JustTiling extends Extension {
             this._controller.dragSwap = this._settings.get_boolean('drag-swap');
             this._controller.insertionSide = this._settings.get_string('new-window-side');
             this._controller.preserveFocusedWindow = this._settings.get_boolean('preserve-focused-window');
+            this._conflictNotice = new ConflictNotice(this._adapter, () => this._syncEnabled());
             this._adapter.observe(event => {
                 if (event.kind === 'changed') this._controller.floatingApps = this._floatingApps();
-                if (event.kind === 'conflict' && this._adapter.conflicts().length)
-                    this._controller.suspend(N_("Auto-tiling paused: another window manager became active"));
-                else if (event.kind === 'shortcuts')
+                if (event.kind === 'conflict') {
+                    const conflicts = this._adapter.conflictDetails();
+                    if (this._settings.get_boolean('tiling-enabled') && conflicts.length)
+                        this._pauseForConflicts(conflicts);
+                    else if (this._conflictNotice.conflicts.length)
+                        this._conflictNotice.update([]);
+                } else if (event.kind === 'shortcuts')
                     this._keys?.refresh();
                 else
                     this._controller.event(event);
+                this._corners?.sync();
                 this._border?.sync();
                 this._preview?.sync();
                 this._numberedSwap?.sync();
@@ -70,6 +76,7 @@ export default class JustTiling extends Extension {
                 },
                 'swap-select': () => this._numberedSwap?.toggle(),
                 'cycle-focus': () => this._controller.cycleFocus(),
+                'toggle-pin': () => this._controller.togglePin(this._adapter.focusedId()),
                 'toggle-floating': () => this._controller.toggleWindow(this._adapter.focusedId()),
                 ...Object.fromEntries(['left', 'right', 'up', 'down'].map(direction =>
                     [`swap-${direction}`, () => this._controller.swapDirection(direction)])),
@@ -84,13 +91,18 @@ export default class JustTiling extends Extension {
                     this._controller.learningPending = null;
                     return;
                 }
+                if (key === 'pinned-layouts') {
+                    this._controller.pinnedLayouts = readLearning(this._settings.get_string(key));
+                    this._controller.pinCache.clear();
+                    this._controller.learningPending = null;
+                }
                 if (key === 'debug') {
                     this._adapter.traceWindows = this._settings.get_boolean('debug');
                     this._adapter.traceAllWindows();
                 }
                 if (key === 'tiling-enabled') this._syncEnabled();
-                else if (key === 'toggle-tiling' || key === 'toggle-floating' || key === 'cycle-focus' || key.startsWith('swap-')) this._keys.refresh();
-                else if (key !== 'focus-border') {
+                else if (key === 'toggle-tiling' || key === 'toggle-floating' || key === 'toggle-pin' || key === 'cycle-focus' || key.startsWith('swap-')) this._keys.refresh();
+                else if (key !== 'hide-panel-icon' && key !== 'focus-border' && key !== 'round-window-corners' && key !== 'corner-radius' && key !== 'focus-border-width') {
                     this._controller.gaps = this._gaps();
                     this._controller.floatingApps = this._settings.get_strv('floating-apps');
                     this._controller.debug = this._settings.get_boolean('debug');
@@ -101,6 +113,7 @@ export default class JustTiling extends Extension {
                     this._controller.schedule(0);
                 }
                 this._indicator?.update();
+                this._corners?.sync();
                 this._border?.sync();
                 this._preview?.sync();
                 this._numberedSwap?.sync();
@@ -109,8 +122,9 @@ export default class JustTiling extends Extension {
                 const previous = this._settings.get_boolean('tiling-enabled');
                 this._settings.set_boolean('tiling-enabled', enabled);
                 if (previous === enabled) this._syncEnabled();
-            }, () => this.openPreferences());
-            this._border = new FocusBorder(this._adapter, this._controller, this._settings);
+            }, () => this.openPreferences(), this._conflictNotice);
+            this._corners = new RoundedCorners(this._adapter, this._settings);
+            this._border = new FocusBorder(this._adapter, this._settings);
             this._preview = new SwapPreview(this._adapter, this._controller);
             this._numberedSwap = new NumberedSwap(this._adapter, this._controller);
             this._controller.onStateChanged = () => {
@@ -120,11 +134,12 @@ export default class JustTiling extends Extension {
                     this._keys.refresh();
                 }
                 this._indicator?.update();
+                this._corners?.sync();
                 this._border?.sync();
                 this._preview?.sync();
                 this._numberedSwap?.sync();
             };
-            this._adapter.log('info', 'Trait JustTiling 0.19.3 loaded.');
+            this._adapter.log('info', 'Trait JustTiling 0.23.0 loaded.');
             this._syncEnabled(false);
         } catch (error) {
             this.disable();
@@ -144,16 +159,25 @@ export default class JustTiling extends Extension {
         return {inner: this._settings.get_int('inner-gap'), outer: this._settings.get_int('outer-gap')};
     }
 
+    _pauseForConflicts(conflicts) {
+        this._controller.suspend(N_("Auto-tiling paused: another window manager is active"), false);
+        this._conflictNotice.update(conflicts);
+        this._indicator?.update();
+    }
+
     _syncEnabled(notify = true) {
         if (!this._settings.get_boolean('tiling-enabled')) {
+            this._conflictNotice.clear();
             this._controller.stop();
             if (notify) this._adapter.notice(N_("Automatic tiling disabled."));
             return;
         }
-        if (this._adapter.conflicts().length) {
-            this._controller.suspend(N_("Auto-tiling paused: another window manager is active"));
+        const conflicts = this._adapter.conflictDetails();
+        if (conflicts.length) {
+            this._pauseForConflicts(conflicts);
             return;
         }
+        this._conflictNotice.clear();
         this._controller.start();
         if (notify) this._adapter.notice(N_("Automatic tiling enabled."));
     }
@@ -166,8 +190,10 @@ export default class JustTiling extends Extension {
             this._controller.onStateChanged = null;
             this._controller.onLearnedLayouts = null;
         }
+        this._conflictNotice?.destroy();
         this._numberedSwap?.destroy();
         this._preview?.destroy();
+        this._corners?.destroy();
         this._border?.destroy();
         this._indicator?.destroy();
         this._adapter?.stopObserving();
@@ -180,8 +206,10 @@ export default class JustTiling extends Extension {
         this._keys = null;
         this._keysActive = null;
         this._indicator = null;
+        this._corners = null;
         this._border = null;
         this._preview = null;
         this._numberedSwap = null;
+        this._conflictNotice = null;
     }
 }

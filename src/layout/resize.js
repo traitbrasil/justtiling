@@ -11,7 +11,7 @@ const close = (a, b) => Math.abs(a - b) <= 1;
 const edgePosition = (r, info) => r[info.axis] + (info.far ? r[info.dimension] : 0);
 
 function findPath(node, id, path = []) {
-    if (!node) return null;
+    if (!node || node.empty) return null;
     if ('id' in node) return node.id === id ? path : null;
     return findPath(node.a, id, [...path, {node, side: 'a'}]) ??
         findPath(node.b, id, [...path, {node, side: 'b'}]);

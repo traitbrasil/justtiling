@@ -1,9 +1,11 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
 msgid ""
-msgstr "Project-Id-Version: Trait JustTiling 0.18.2\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: pt_BR\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+msgstr "Project-Id-Version: Trait JustTiling 0.23.0\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: pt_BR\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
 
 msgid " or "
 msgstr " ou "
+
+msgid "%s\nDisable these extensions in the Extension Manager, then resume automatic tiling."
+msgstr "%s\nDesative essas extensões no gerenciador de extensões e depois retome a organização automática."
 
 msgid "(empty identifier)"
 msgstr "(identificador vazio)"
@@ -23,14 +25,17 @@ msgstr "Sempre deixar este aplicativo flutuante"
 msgid "Always-floating applications"
 msgstr "Aplicativos sempre flutuantes"
 
-msgid "Applied immediately to the layout. Values range from 0 to 64."
-msgstr "Aplicados imediatamente ao layout. Valores de 0 a 64."
+msgid "Application list"
+msgstr "Lista de aplicativos"
+
+msgid "Applications: %s"
+msgstr "Aplicativos: %s"
+
+msgid "Applies to tiled and floating windows. Maximized and fullscreen windows keep their original appearance."
+msgstr "Aplicado a janelas organizadas e flutuantes. Janelas maximizadas e em tela cheia mantêm a aparência original."
 
 msgid "At the work area edges"
 msgstr "Nas bordas da área útil"
-
-msgid "Auto-tiling paused: another window manager became active"
-msgstr "Organização pausada: outro gerenciador de janelas foi ativado"
 
 msgid "Auto-tiling paused: another window manager is active"
 msgstr "Organização pausada: outro gerenciador de janelas está ativo"
@@ -65,6 +70,9 @@ msgstr "Entre janelas"
 msgid "Change"
 msgstr "Alterar"
 
+msgid "Changes apply immediately to gaps, corners and the focus border."
+msgstr "As alterações são aplicadas imediatamente aos espaçamentos, aos cantos e à borda de foco."
+
 msgid "Changes are saved automatically. Tiling supports one monitor."
 msgstr "As alterações são salvas automaticamente. O tiling funciona com um monitor."
 
@@ -77,8 +85,23 @@ msgstr "Apagar tudo"
 msgid "Clear all learned layouts"
 msgstr "Apagar todo o aprendizado"
 
+msgid "Conflicting extensions"
+msgstr "Extensões conflitantes"
+
+msgid "Conflicting extensions are no longer active. Resume automatic tiling when you are ready."
+msgstr "As extensões conflitantes não estão mais ativas. Retome a organização automática quando quiser."
+
+msgid "Conflicts resolved. Resume automatic tiling when you are ready."
+msgstr "Conflitos resolvidos. Retome a organização automática quando quiser."
+
 msgid "Contact"
 msgstr "Contato"
+
+msgid "Corner radius (px)"
+msgstr "Arredondamento dos cantos (px)"
+
+msgid "Could not open the Extension Manager. Open it from your applications menu."
+msgstr "Não foi possível abrir o gerenciador de extensões. Abra-o pelo menu de aplicativos."
 
 msgid "Cycle focus through tiled windows"
 msgstr "Alternar foco entre janelas organizadas"
@@ -92,8 +115,14 @@ msgstr "Desativado"
 msgid "Enable automatic tiling before toggling a window."
 msgstr "Ligue o auto-tiling antes de alternar uma janela."
 
+msgid "Focus border width (px)"
+msgstr "Espessura da borda de foco (px)"
+
 msgid "Forget"
 msgstr "Esquecer"
+
+msgid "From 1 to 8 px, drawn inside the window."
+msgstr "De 1 a 8 px, desenhada para dentro da janela."
 
 msgid "Gaps"
 msgstr "Espaçamentos"
@@ -113,6 +142,9 @@ msgstr "Aprendizado de layout"
 msgid "Learn application positions and sizes"
 msgstr "Aprender posições e tamanhos dos aplicativos"
 
+msgid "Learned applications"
+msgstr "Aplicativos com aprendizado"
+
 msgid "Learns from manual split adjustments and window swaps. Saved preferences guide new windows when space allows."
 msgstr "Aprende com ajustes manuais de divisões e trocas de posição. As preferências orientam novas aberturas quando houver espaço."
 
@@ -125,14 +157,17 @@ msgstr "Posição de novas janelas"
 msgid "No application exceptions"
 msgstr "Nenhuma exceção por aplicativo"
 
+msgid "No extension manager was found. Install GNOME Extensions to manage conflicting extensions."
+msgstr "Nenhum gerenciador de extensões foi encontrado. Instale o aplicativo Extensões do GNOME para gerenciar as extensões conflitantes."
+
 msgid "No learned applications"
 msgstr "Nenhum aplicativo aprendido"
 
 msgid "Only when the application has a single tiled window. Turning this off pauses both learning and the use of saved preferences."
 msgstr "Somente com uma janela organizada do aplicativo. Desativar pausa o aprendizado e a aplicação das preferências salvas."
 
-msgid "Other window managers are active: %s"
-msgstr "Outros gerenciadores de janelas estão ativos: %s"
+msgid "Open Extension Manager"
+msgstr "Abrir gerenciador de extensões"
 
 msgid "Position: %s%%, %s%% · Size: %s%% × %s%%"
 msgstr "Posição: %s%%, %s%% · Tamanho: %s%% × %s%%"
@@ -140,8 +175,8 @@ msgstr "Posição: %s%%, %s%% · Tamanho: %s%% × %s%%"
 msgid "Preferences…"
 msgstr "Preferências…"
 
-msgid "Preserve the focused window size"
-msgstr "Preservar tamanho da janela em foco"
+msgid "Prefer splitting other windows"
+msgstr "Preferir dividir outras janelas"
 
 msgid "Press the desired key combination.\nBackspace disables; Enter saves; Escape cancels."
 msgstr "Pressione a combinação desejada.\nBackspace desativa; Enter salva; Escape cancela."
@@ -170,8 +205,14 @@ msgstr "Voltar aos valores padrão"
 msgid "Restore the default shortcut for this action"
 msgstr "Restaurar o atalho padrão desta ação"
 
+msgid "Resume automatic tiling"
+msgstr "Retomar organização automática"
+
 msgid "Right"
 msgstr "À direita"
+
+msgid "Round window corners"
+msgstr "Arredondar cantos das janelas"
 
 msgid "Save"
 msgstr "Salvar"
@@ -190,6 +231,9 @@ msgstr "Atalho %s indisponível: %s. Escolha outra combinação nas Preferência
 
 msgid "Swap windows by dragging and dropping"
 msgstr "Trocar janelas ao arrastar e soltar"
+
+msgid "Swap with a numbered window"
+msgstr "Trocar com uma janela numerada"
 
 msgid "Swap with the window above"
 msgstr "Trocar janela com a de cima"
@@ -236,11 +280,23 @@ msgstr "Alternar janela ativa entre organizada e flutuante"
 msgid "Toggle the window between tiled and floating"
 msgstr "Alternar janela entre organizada e flutuante"
 
+msgid "Trait JustTiling: conflicts resolved"
+msgstr "Trait JustTiling: conflitos resolvidos"
+
+msgid "Trait JustTiling: tiling paused"
+msgstr "Trait JustTiling: organização pausada"
+
 msgid "Use Super, Ctrl or Alt together with another key."
 msgstr "Use Super, Ctrl ou Alt junto com outra tecla."
 
-msgid "When opening windows, shrink other windows first. Shrink the focused window only when necessary."
-msgstr "Ao abrir janelas, reduzir primeiro as outras. A janela em foco só diminui se necessário."
+msgid "Used by the focus border and rounded windows. Zero disables forced window rounding."
+msgstr "Usado na borda de foco e nas janelas arredondadas. Zero desativa o arredondamento forçado das janelas."
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "For equally balanced layouts, prefer splitting another window. Pinned and learned sizes take priority."
+msgstr "Entre layouts igualmente equilibrados, prefira dividir outra janela. Tamanhos fixados e aprendidos têm prioridade."
 
 msgid "Within the space chosen for the new window. In stacked splits: above or below."
 msgstr "No espaço escolhido para a nova janela. Em divisões empilhadas: acima ou abaixo."
@@ -254,18 +310,41 @@ msgstr "combinação inválida"
 msgid "the compositor refused the shortcut"
 msgstr "o compositor recusou o registro"
 
+msgid "No pinned applications"
+msgstr "Nenhum aplicativo fixado"
 
-msgid "Version"
-msgstr "Versão"
+msgid "Pin an application from the panel menu. Its saved region takes priority when space allows, independently of layout learning."
+msgstr "Fixe um aplicativo pelo menu do painel. A área salva tem prioridade quando houver espaço, independentemente do aprendizado de layout."
 
-msgid "Learned applications"
-msgstr "Aplicativos com aprendizado"
+msgid "Pin or unpin the active application"
+msgstr "Fixar ou desafixar o aplicativo ativo"
 
-msgid "Application list"
-msgstr "Lista de aplicativos"
+msgid "Pin this application's position and size"
+msgstr "Fixar posição e tamanho deste aplicativo"
 
-msgid "Applications: %s"
-msgstr "Aplicativos: %s"
+msgid "Pinned applications"
+msgstr "Aplicativos fixados"
 
-msgid "Swap with a numbered window"
-msgstr "Trocar com uma janela numerada"
+msgid "Select a tiled window and enable pinning in the panel menu."
+msgstr "Selecione uma janela organizada e habilite a fixação no menu do painel."
+
+msgid "Select a tiled window to pin this application."
+msgstr "Selecione uma janela organizada para fixar este aplicativo."
+
+msgid "Unpin"
+msgstr "Desafixar"
+
+msgid "Unpin all applications"
+msgstr "Desafixar todos os aplicativos"
+
+msgid "Application unpinned."
+msgstr "Aplicativo desafixado."
+
+msgid "Application pinned. Preferred position and size saved."
+msgstr "Aplicativo fixado. Posição e tamanho preferidos salvos."
+
+msgid "Hide the panel icon"
+msgstr "Ocultar ícone do painel"
+
+msgid "Tiling and keyboard shortcuts keep working while the icon is hidden."
+msgstr "A organização das janelas e os atalhos continuam funcionando com o ícone oculto."

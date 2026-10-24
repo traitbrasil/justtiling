@@ -55,6 +55,7 @@ export function uniqueLearningKey(id, windows) {
 }
 
 function exchange(node, first, second) {
+    if (node.empty) return node;
     if ('id' in node) return {id: node.id === first ? second : node.id === second ? first : node.id};
     return {...node, a: exchange(node.a, first, second), b: exchange(node.b, first, second)};
 }
@@ -72,9 +73,10 @@ function error(plan, goals, root) {
 
 // Fit existing BSP branches to remembered regions. Minima come from the solver;
 // maxima remain enforced by its final pass. No pixel positions are persisted.
-function fit(tree, initial, goals, root, gaps) {
+export function fitLayoutGoals(tree, initial, goals, root, gaps) {
     const regions = new Map();
     function measure(node) {
+        if (node.empty) { regions.set(node, null); return null; }
         if ('id' in node) {
             const goal = goals.get(node.id);
             const rect = goal && {x: root.x + goal.x * root.width, y: root.y + goal.y * root.height,
@@ -91,7 +93,7 @@ function fit(tree, initial, goals, root, gaps) {
         regions.set(node, region); return region;
     }
     function place(node, rect) {
-        if ('id' in node) return node;
+        if (node.empty || 'id' in node) return node;
         const dim = node.axis === 'x' ? 'width' : 'height', axis = node.axis;
         const available = rect[dim] - gaps.inner;
         const a = regions.get(node.a), b = regions.get(node.b);
@@ -125,7 +127,7 @@ export function applyLearning(tree, newId, goals, area, specs, gaps, protectedFo
     // Bound the amount of work per insertion, including large layouts.
     candidates.sort((a, b) => error(a.plan, goals, root) - error(b.plan, goals, root));
     for (const candidate of [{tree, plan: base}, ...candidates.filter(item => item.tree !== tree).slice(0, 7)]) {
-        for (const next of [candidate.tree, fit(candidate.tree, candidate.plan, goals, root, gaps)]) {
+        for (const next of [candidate.tree, fitLayoutGoals(candidate.tree, candidate.plan, goals, root, gaps)]) {
             const plan = solve(next, area, specs, gaps);
             if (!plan || !allowed(plan)) continue;
             const value = error(plan, goals, root);

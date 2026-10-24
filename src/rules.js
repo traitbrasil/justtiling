@@ -11,6 +11,13 @@ export function exclusion(data) {
     return null;
 }
 
+// Highlighting is independent of tiling eligibility and application identity.
+// Only actual focused application windows qualify, not desktop chrome or popups.
+export function focusBorderEligible(data) {
+    return Boolean(data?.alive && data.mapped && data.appWindow && data.inScope &&
+        !data.overrideRedirect && !data.minimized && !data.fullscreen && !data.maximized);
+}
+
 // Explicit usability floor; hints can further increase it. No toolkit blacklist.
 export function constraints(data) {
     return {

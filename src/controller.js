@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {N_} from './strings.js';
-import {ids, insert, remove, sameRect, solve} from './layout/tree.js';
+import {ids, remove, sameRect, solve} from './layout/tree.js';
 import {appIdentities, constraints, exclusion, matchesApp} from './rules.js';
-import {applyLearning, learningMatch, normalizedFrame, uniqueLearningKey} from './learning.js';
+import {learningIdentity, learningMatch, normalizedFrame, uniqueLearningKey} from './learning.js';
 import {beginDrag, finishDrag, swapTiles, directionalNeighbor} from './layout/drag.js';
 import {beginResize, finishResize, sameSpecs} from './layout/resize.js';
+
+import {balancedLayout, comfortableLearning, insertBalanced} from './layout/balance.js';
+import {pinnedLayout, withoutReservations} from './pinning.js';
 
 const SETTLE_MS = 400;
 const READY_MS = 2000;
@@ -36,6 +39,11 @@ export class Controller {
         this.dragSwap = true;
         this.drag = null;
         this.resize = null;
+        this.pinnedLayouts = Object.create(null);
+        this.onPinnedLayouts = null;
+        this.pinOwners = new Map();
+        this.pinCache = new Map();
+        this.balancePending = new Set();
         this.learnLayouts = true;
         this.learnedLayouts = Object.create(null);
         this.onLearnedLayouts = null;
@@ -59,7 +67,7 @@ export class Controller {
             const next = remove(tree, id);
             // Excluded desktop/dialog windows are reconsidered every reconcile.
             // They must not cancel a manual intent when no tile was removed.
-            if (next !== tree) this.learningPending = null;
+            if (next !== tree) { this.learningPending = null; this.balancePending.add(domain); }
             if (next) this.trees.set(domain, next);
             else this.trees.delete(domain);
         }
@@ -147,7 +155,7 @@ export class Controller {
         });
     }
 
-    suspend(reason) {
+    suspend(reason, notify = true) {
         this.learningPending = null;
         if (this.suspended) return;
         this.suspended = true;
@@ -161,8 +169,11 @@ export class Controller {
         this.resize = null;
         this.drag = null;
         this.trees.clear();
+        this.pinCache.clear();
+        this.pinOwners.clear();
+        this.balancePending.clear();
         this.adapter.log('warn', `${reason}; use the toggle to restart explicitly.`);
-        this.adapter.notice(reason);
+        if (notify) this.adapter.notice(reason);
         this.changed();
     }
 
@@ -180,6 +191,9 @@ export class Controller {
         this.drag = null;
         this.records.clear();
         this.trees.clear();
+        this.pinCache.clear();
+        this.pinOwners.clear();
+        this.balancePending.clear();
         this.focusByDomain.clear();
         this.changed();
     }
@@ -319,6 +333,66 @@ export class Controller {
         return true;
     }
 
+    pinGoals() {
+        const goals = new Map(), candidates = new Map();
+        for (const id of ids(this.tree)) {
+            const data = this.adapter.read(id), key = data && learningMatch(data, this.pinnedLayouts);
+            if (!key) continue;
+            if (!candidates.has(key)) candidates.set(key, []);
+            candidates.get(key).push(id);
+        }
+        for (const [key, windows] of candidates) {
+            if (!this.pinOwners.has(this.domain)) this.pinOwners.set(this.domain, new Map());
+            const owners = this.pinOwners.get(this.domain);
+            const owner = windows.includes(owners.get(key)) ? owners.get(key) : windows[0];
+            owners.set(key, owner);
+            goals.set(owner, this.pinnedLayouts[key]);
+        }
+        return goals;
+    }
+
+    togglePin(id) {
+        if (!this.running || this.suspended) return;
+        if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
+        const data = this.adapter.read(id), key = data && learningIdentity(data);
+        if (!key) return;
+        const existing = learningMatch(data, this.pinnedLayouts), apps = {...this.pinnedLayouts};
+        if (existing) delete apps[existing];
+        else {
+            if (this.records.get(id)?.state !== 'tiled' || exclusion(data) || !data.ready || data.maximized) {
+                this.adapter.notice(N_("Select a tiled window to pin this application.")); return;
+            }
+            const frame = normalizedFrame(data.rect, this.adapter.area(), this.gaps);
+            if (!frame || Object.keys(apps).length >= 128) return;
+            apps[key] = frame;
+            if (!this.pinOwners.has(this.domain)) this.pinOwners.set(this.domain, new Map());
+            this.pinOwners.get(this.domain).set(key, id);
+        }
+        this.pinnedLayouts = apps;
+        this.learningPending = null;
+        this.pinCache.clear();
+        this.onPinnedLayouts?.(apps);
+        this.adapter.notice(existing ? N_("Application unpinned.") : N_("Application pinned. Preferred position and size saved."));
+        this.schedule(0);
+        this.changed();
+    }
+
+    fitPins(area, specs) {
+        if (this.learningPending) return; // Explicit manual edits settle before saving a new anchor.
+        const rebalance = this.balancePending.has(this.domain);
+        const goals = this.pinGoals();
+        const signature = JSON.stringify({goals: [...goals], area, gaps: this.gaps, specs: [...specs]});
+        const cache = this.pinCache.get(this.domain);
+        if (!rebalance && cache?.tree === this.tree && cache.signature === signature) return;
+        let tree = this.tree;
+        if (rebalance) tree = this.preferredBalance(withoutReservations(tree), area, specs, this.gaps);
+        const remainder = rebalance ? (part, region) => this.preferredBalance(part, region, specs,
+            {inner: this.gaps.inner, outer: 0}) : null;
+        this.tree = pinnedLayout(tree, goals, area, specs, this.gaps, remainder);
+        this.balancePending.delete(this.domain);
+        this.pinCache.set(this.domain, {tree: this.tree, signature});
+    }
+
     learningWindows(extra = null) {
         const windows = new Map();
         for (const [id, r] of this.records) {
@@ -330,7 +404,7 @@ export class Controller {
     }
 
     queueLearning(affected) {
-        this.learningPending = this.learnLayouts && affected.length ?
+        this.learningPending = (this.learnLayouts || this.pinGoals().size > 0) && affected.length ?
             {tree: this.tree, domain: this.domain, affected, area: {...this.adapter.area()},
                 gaps: {...this.gaps}, specs: this.layoutSpecs()} : null;
     }
@@ -338,7 +412,7 @@ export class Controller {
     commitLearning(plan) {
         const pending = this.learningPending;
         if (!pending) return;
-        if (!this.learnLayouts || pending.tree !== this.tree || pending.domain !== this.domain ||
+        if (pending.tree !== this.tree || pending.domain !== this.domain ||
             !sameRect(pending.area, this.adapter.area()) ||
             pending.gaps.inner !== this.gaps.inner || pending.gaps.outer !== this.gaps.outer ||
             !sameSpecs(pending.specs, this.layoutSpecs())) {
@@ -348,13 +422,22 @@ export class Controller {
             !sameRect(this.adapter.read(id)?.rect, rect, 1))) return;
         this.learningPending = null;
         const windows = this.learningWindows(), apps = {...this.learnedLayouts};
+        const pinned = {...this.pinnedLayouts}, owners = this.pinGoals();
         for (const id of pending.affected) {
+            const data = windows.get(id), pinKey = data && learningMatch(data, pinned);
+            const preferred = normalizedFrame(plan.frames.get(id), this.adapter.area(), this.gaps);
+            if (pinKey && preferred && owners.has(id)) pinned[pinKey] = preferred;
+            if (!this.learnLayouts) continue;
             const key = uniqueLearningKey(id, windows);
             const frame = normalizedFrame(plan.frames.get(id), this.adapter.area(), this.gaps);
             if (!key || !frame || (!Object.hasOwn(apps, key) && Object.keys(apps).length >= 128)) continue;
             const oldKey = learningMatch(windows.get(id), apps);
             if (oldKey && oldKey !== key) delete apps[oldKey];
             apps[key] = frame;
+        }
+        if (JSON.stringify(pinned) !== JSON.stringify(this.pinnedLayouts)) {
+            this.pinnedLayouts = pinned;
+            this.onPinnedLayouts?.(pinned);
         }
         if (JSON.stringify(apps) !== JSON.stringify(this.learnedLayouts)) {
             this.learnedLayouts = apps;
@@ -363,19 +446,37 @@ export class Controller {
         }
     }
 
-    learnedInsertion(tree, id, specs, area, before) {
-        if (!this.learnLayouts) return tree;
-        const windows = this.learningWindows(id), goals = new Map();
-        for (const key of ids(tree)) {
-            if (!uniqueLearningKey(key, windows)) continue;
-            const profile = learningMatch(windows.get(key), this.learnedLayouts);
-            if (profile) goals.set(key, this.learnedLayouts[profile]);
+    learningGoals(tree, area, gaps) {
+        if (!this.learnLayouts) return new Map();
+        const windows = this.learningWindows(), goals = new Map();
+        const full = this.adapter.area(), root = {x: full.x + this.gaps.outer, y: full.y + this.gaps.outer,
+            width: full.width - 2 * this.gaps.outer, height: full.height - 2 * this.gaps.outer};
+        const local = {x: area.x + gaps.outer, y: area.y + gaps.outer,
+            width: area.width - 2 * gaps.outer, height: area.height - 2 * gaps.outer};
+        for (const id of ids(tree)) {
+            if (!uniqueLearningKey(id, windows)) continue;
+            const data = windows.get(id);
+            if (learningMatch(data, this.pinnedLayouts)) continue;
+            const profile = learningMatch(data, this.learnedLayouts);
+            if (!profile) continue;
+            const goal = this.learnedLayouts[profile];
+            const width = Math.min(1, goal.width * root.width / local.width);
+            const height = Math.min(1, goal.height * root.height / local.height);
+            goals.set(id, {x: Math.max(0, Math.min(1 - width, (root.x + goal.x * root.width - local.x) / local.width)),
+                y: Math.max(0, Math.min(1 - height, (root.y + goal.y * root.height - local.y) / local.height)), width, height});
         }
-        let protectedFocus = null;
-        const old = before?.frames.get(this.lastFocus), next = solve(tree, area, specs, this.gaps)?.frames.get(this.lastFocus);
-        if (this.preserveFocusedWindow && old && next && next.width >= old.width && next.height >= old.height)
-            protectedFocus = {id: this.lastFocus, width: old.width, height: old.height};
-        return applyLearning(tree, id, goals, area, specs, this.gaps, protectedFocus);
+        return goals;
+    }
+
+    preferredBalance(tree, area, specs, gaps) {
+        if (!tree) return tree;
+        const next = balancedLayout(tree, area, specs, gaps), goals = this.learningGoals(next, area, gaps);
+        if (!goals.size || ids(next).length < 2) return next;
+        const learned = pinnedLayout(next, goals, area, specs, gaps,
+            (part, region) => balancedLayout(part, region, specs, {inner: gaps.inner, outer: 0}));
+        const ordinary = new Set(ids(next).filter(id => !goals.has(id) &&
+            !learningMatch(this.adapter.read(id), this.pinnedLayouts)));
+        return comfortableLearning(next, learned, goals, area, specs, gaps, ordinary, withoutReservations(learned));
     }
 
     applyAppRule(target) {
@@ -683,6 +784,9 @@ export class Controller {
             for (const domain of this.trees.keys()) {
                 if (!remaining.has(domain)) this.trees.delete(domain);
             }
+            for (const domain of this.balancePending) if (!remaining.has(domain)) this.balancePending.delete(domain);
+            for (const domain of this.pinCache.keys()) if (!remaining.has(domain)) this.pinCache.delete(domain);
+            for (const domain of this.pinOwners.keys()) if (!remaining.has(domain)) this.pinOwners.delete(domain);
             for (const domain of this.focusByDomain.keys()) {
                 if (!remaining.has(domain)) this.focusByDomain.delete(domain);
             }
@@ -695,6 +799,8 @@ export class Controller {
             const d = data.get(r.id);
             if (!exclusion(d)) specs.set(r.id, constraints(d));
         }
+        if (this.tree && !solve(this.tree, area, specs, this.gaps))
+            this.tree = withoutReservations(this.tree);
         // A resolution/hint change can invalidate an existing tree. Newest leaves yield first.
         while (this.tree && !solve(this.tree, area, specs, this.gaps)) {
             const newest = ids(this.tree).at(-1);
@@ -739,13 +845,12 @@ export class Controller {
                 this.float(r, 'capacity');
                 continue;
             }
-            const before = solve(this.tree, area, specs, this.gaps);
-            let next = insert(this.tree, r.id, specs, area, this.gaps, this.lastFocus, this.insertionSide, this.preserveFocusedWindow);
+            let next = insertBalanced(withoutReservations(this.tree), r.id, specs, area, this.gaps, this.lastFocus, this.insertionSide, this.preserveFocusedWindow);
             if (!next) {
                 this.float(r, 'insufficient-space');
                 continue;
             }
-            next = this.learnedInsertion(next, r.id, specs, area, before);
+            this.balancePending.add(this.domain);
             this.capture(r);
             if (r.state === 'preparing') r.snapshot.rect = {...d.rect};
             this.learningPending = null;
@@ -755,6 +860,7 @@ export class Controller {
             this.adapter.log('info', `Tiled ${r.id}`);
         }
 
+        this.fitPins(area, specs);
         const plan = solve(this.tree, area, specs, this.gaps);
         if (!plan) return;
         let removed = false;

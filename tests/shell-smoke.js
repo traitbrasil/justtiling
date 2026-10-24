@@ -8,7 +8,8 @@ const root = ARGV[0];
 const english = GLib.getenv('LANGUAGE') === 'en';
 const {widgets: borderWidgets} = await import(`${root}/tests/fixtures/st.js`);
 const packageFixture = await import(`${root}/tests/fixtures/packageLookup.js`);
-const {tracker} = await import(`${root}/tests/fixtures/shell.js`);
+const messageTray = await import(`${root}/tests/fixtures/messageTray.js`);
+const {appSystem, tracker} = await import(`${root}/tests/fixtures/shell.js`);
 const Main = await import(`${root}/tests/fixtures/main.js`);
 const {default: JustTiling} = await import(`${root}/extension.js`);
 function assert(value, message) { if (!value) throw new Error(message); }
@@ -33,23 +34,30 @@ const manager = new Signals();
 Object.assign(manager, {get_active_workspace: () => activeWorkspace,
     get_n_workspaces: () => workspaceList.length, get_workspace_by_index: i => workspaceList[i]});
 const display = new Signals();
+const shellwm = new Signals();
 let monitors = 1;
 const windows = [];
 let aboveChanges = 0;
 Object.assign(display, {list_all_windows: () => windows,
     get_n_monitors: () => monitors, focus_window: null});
 let pointer = {x: 0, y: 0}, pointerReads = 0;
-globalThis.global = {stage: {width: 1600, height: 932}, display, workspace_manager: manager, get_current_time: () => 1234,
+globalThis.global = {window_manager: shellwm, stage: {width: 1600, height: 932}, display, workspace_manager: manager, get_current_time: () => 1234,
     get_pointer: () => { pointerReads++; return [pointer.x, pointer.y, 0]; }};
 
 class WindowActor extends Signals {
-    constructor() { super(); this.children = new Set(); this.childScale = 1; }
+    constructor() { super(); this.children = new Set(); this.childScale = 1; this.effects = new Map(); this.width = 720; this.height = 530; }
+    add_effect_with_name(name, effect) { this.effects.set(name, effect); }
+    remove_effect(effect) { for (const [key, current] of this.effects) if (current === effect) this.effects.delete(key); }
     get_child_transform() { return {get_value: () => this.childScale}; }
-    add_child(child) { child.parent = this; this.children.add(child); }
+    add_child(child) { child.parent = this; this.children.add(child); this.emit('child-added', child); }
+    set_child_above_sibling(child, sibling) {
+        assert(sibling === null && this.children.has(child), 'Border stacking must stay inside its own native parent');
+        this.children.delete(child); this.children.add(child);
+    }
     destroy() {
         this.emit('destroy');
         for (const child of [...this.children]) child.destroy();
-        this.handlers.clear();
+        this.effects.clear(); this.handlers.clear();
     }
 }
 class Window extends Signals {
@@ -113,7 +121,7 @@ let ext = new JustTiling();
 ext.enable();
 await wait(500);
 assert(Main.wm.bindings.get('toggle-tiling').settings.get_strv('toggle-tiling')[0] === '<Super>t', 'Default tiling shortcut must be Super+T');
-assert(Main.wm.bindings.get('toggle-floating').settings.get_strv('toggle-floating')[0] === '<Super>o', 'Default floating shortcut must be Super+O');
+assert(Main.wm.bindings.get('toggle-floating').settings.get_strv('toggle-floating')[0] === '<Super>g', 'Default floating shortcut must be Super+G');
 assert(Main.panel.indicators.size === 1, 'Panel menu must be attached');
 assert(w1.frame.width === 1570, 'Adapter must tile first window');
 const firstMoves = w1.moves;
@@ -130,7 +138,7 @@ w3.emit('unmanaging'); windows.splice(windows.indexOf(w3), 1);
 await wait(200);
 assert(w3.handlers.size === 0, 'Destroyed window signals must be disconnected');
 assert(w1.frame.width === 1570, 'Closing must recover space');
-assert(Main.wm.bindings.size === 8, 'All eight keybindings should be registered');
+assert(Main.wm.bindings.size === 9, 'All eight keybindings should be registered');
 assert(JSON.stringify(nativeKeys.get_strv('unmaximize')) === JSON.stringify(['<Alt>F5']),
     'Override must remove only conflicting arrow and preserve other accelerators');
 ext.disable(); ext.disable();
@@ -143,25 +151,112 @@ assert(!w2.above, 'Disable must preserve native floating stacking');
 assert(w1.handlers.size === 0 && w2.handlers.size === 0, 'Window signals leaked');
 assert(display.handlers.size === 0 && manager.handlers.size === 0, 'Global signals leaked');
 assert(Main.layoutManager.handlers.size === 0 && Main.extensionManager.handlers.size === 0, 'Shell signals leaked');
+// Upgrade the former Super+O default using real memory-backed schema values.
+const mediaKeys = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.plugins.media-keys'});
+const rotationKeys = mediaKeys.get_strv('rotate-video-lock-static');
+migrationSettings.set_strv('toggle-floating', ['<Super>o']);
+migrationSettings.set_int('preferences-version', 2);
+ext = new JustTiling(); ext.enable(); await wait(100);
+assert(ext._settings.get_strv('toggle-floating')[0] === '<Super>g' && Main.wm.bindings.has('toggle-floating'),
+    'Existing Super+O default must migrate to a registered Super+G binding');
+display.focus_window = w1; display.emit('notify::focus-window');
+Main.wm.press('toggle-floating'); await wait(100);
+assert(ext._controller.records.get(1).state === 'floating', 'New floating shortcut must execute the menu action');
+Main.wm.press('toggle-floating'); await wait(500);
+assert(ext._controller.records.get(1).state === 'tiled', 'New floating shortcut must also return the window to tiling');
+assert(ext._adapter.shortcutSources().some(source => source.schema ===
+    'org.gnome.settings-daemon.plugins.media-keys' && source.key === 'rotate-video-lock-static'),
+    'Runtime conflict detection must include GNOME media shortcuts');
+assert(JSON.stringify(mediaKeys.get_strv('rotate-video-lock-static')) === JSON.stringify(rotationKeys),
+    'Choosing Super+G must preserve the GNOME rotation lock bindings');
+ext.disable();
 const moves = w1.moves;
 await wait(500);
 assert(w1.moves === moves, 'Callback moved window after disable');
 
-for (const uuid of ['o-tiling@test', 'justtiling@dudu.local']) {
-    Main.extensionManager.extensions.set(uuid, {state: 1});
-    ext = new JustTiling();
-    let rejected = false;
-    try { ext.enable(); } catch (_) { rejected = true; }
-    assert(rejected, 'Active competing or legacy tiler must block startup');
+for (const uuid of ['o-tiling@test', 'justtiling@dudu.local', 'just@trait.com.br']) {
+    const name = uuid === 'o-tiling@test' ? 'Ubuntu Tiling Assistant' : '<b>Example Tiler</b>';
+    Main.extensionManager.extensions.set(uuid, {state: 1, metadata: {name}});
+    const beforeMoves = w1.moves, beforeCreated = messageTray.created.length;
+    ext = new JustTiling(); ext.enable();
+    assert(ext._controller.suspended && !Main.wm.bindings.has('swap-select') && w1.moves === beforeMoves,
+        'Conflicting tiler must pause without failing extension activation or moving windows');
+    assert(Main.panel.indicators.has(ext.uuid) && ext._indicator.manager.visible && ext._indicator.conflict.visible,
+        'Paused extension must keep its panel warning and manager action available');
+    const rows = ext._indicator.conflictRows;
+    assert(ext._indicator.conflictList.actor.visible && rows.length === 1 &&
+        rows[0].label.text === `${name}\n${uuid}` && rows[0].label.clutter_text.line_wrap &&
+        rows[0].label.clutter_text.ellipsize === 0 && rows[0].label.clutter_text.line_wrap_mode === 2,
+        'Panel must list literal names and UUIDs with wrapping and no ellipsis');
+    assert(ext._indicator.conflict.label.text === (english ? 'Conflicting extensions' : 'Extensões conflitantes'),
+        'Panel must use a short translated heading above separate conflict rows');
+    const warning = ext._conflictNotice.notification;
+    assert(warning.body.startsWith(name) && warning.useBodyMarkup === false && warning.actions.length === 1 &&
+        warning.actions[0].label === (english ? 'Open Extension Manager' : 'Abrir gerenciador de extensões'),
+        'Notification must show literal extension names and a translated manager button');
+    ext._syncEnabled(); ext._syncEnabled();
+    assert(messageTray.created.length === beforeCreated + 1, 'Repeated attempts must not spam conflict notifications');
+    let launches = 0;
+    appSystem.apps.set('org.gnome.Extensions.desktop', {activate() { launches++; }});
+    warning.actions[0].activate();
+    assert(launches === 1 && ext._controller.suspended, 'Notification action must open manager without resuming');
+    appSystem.apps.clear();
+    appSystem.apps.set('com.mattjakeman.ExtensionManager.desktop', {activate() { launches++; }});
+    ext._indicator.manager.emit('activate');
+    assert(launches === 2, 'Panel action must support the alternative Extension Manager');
+    appSystem.apps.clear();
+    const beforeNotices = Main.notices.length;
+    ext._indicator.manager.emit('activate');
+    assert(Main.notices.length === beforeNotices + 1 && ext._controller.suspended,
+        'A missing manager must produce useful feedback without changing tiling');
+    Main.notices.length = beforeNotices;
+    assert(Main.extensionManager.extensions.get(uuid).state === 1,
+        'Opening the manager must not disable or change another extension');
+    warning.destroy(); ext._syncEnabled();
+    assert(ext._conflictNotice.notification === null && ext._indicator.manager.visible &&
+        messageTray.created.length === beforeCreated + 1, 'Dismissed notifications must not respawn; keep panel action');
+    const secondUuid = 'forge@example';
+    const longName = 'A long extension name '.repeat(6).trim();
+    Main.extensionManager.extensions.set(secondUuid, {state: 1, metadata: {name: longName}});
+    Main.extensionManager.emit('extension-state-changed');
+    const listed = ext._indicator.conflictRows.map(row => row.label.text);
+    assert(listed.length === 2 && listed.includes(`${name}\n${uuid}`) &&
+        listed.includes(`${longName}\n${secondUuid}`),
+        'Every active conflict must have its own complete row, including long names');
+    ext._conflictNotice.notification.destroy(); ext._indicator.button.menu.open();
+    assert(ext._indicator.conflictRows.length === 2 && ext._indicator.conflictList.actor.visible,
+        'Conflict names must remain accessible after dismissing the notification');
+    ext._indicator.button.menu.close();
+    Main.extensionManager.extensions.delete(secondUuid);
+    Main.extensionManager.extensions.delete(uuid);
+    Main.extensionManager.emit('extension-state-changed');
+    assert(!ext._indicator.conflictList.actor.visible && ext._indicator.conflictRows.length === 0,
+        'Resolving all conflicts must clear the list');
+    assert(ext._controller.suspended && ext._indicator.resume.visible && !ext._indicator.manager.visible &&
+        w1.moves === beforeMoves, 'Resolving conflicts must wait for explicit resume');
+    const resolved = ext._conflictNotice.notification;
+    assert(resolved.actions[0].label === (english ? 'Resume automatic tiling' : 'Retomar organização automática'),
+        'Resolved notification must offer an explicit translated resume action');
+    Main.extensionManager.extensions.set(uuid, {state: 2, metadata: {name}});
+    Main.extensionManager.emit('extension-state-changed');
+    assert(ext._controller.suspended && !ext._conflictNotice.resolved && ext._indicator.manager.visible,
+        'A newly activating conflict must replace the resolved prompt without resuming');
+    Main.extensionManager.extensions.delete(uuid); Main.extensionManager.emit('extension-state-changed');
+    ext._conflictNotice.notification.actions[0].activate(); await wait(250);
+    assert(!ext._controller.suspended && ext._controller.running && !ext._indicator.conflict.visible &&
+        messageTray.notifications.size === 0, 'Explicit resume must start tiling and clear the warning');
     ext.disable();
+    assert(messageTray.notifications.size === 0 && warning.actions.length === 0 && resolved.actions.length === 0,
+        'Disabling must remove notifications and their action callbacks');
     Main.extensionManager.extensions.clear();
 }
-assert(display.handlers.size === 0, 'Partial-enable failure leaked observers');
+assert(display.handlers.size === 0 && shellwm.handlers.size === 0, 'Partial-enable failure leaked observers');
 
+const noticesBeforeMonitor = Main.notices.length;
 ext = new JustTiling(); ext.enable(); await wait(500);
 monitors = 2; Main.layoutManager.emit('monitors-changed'); await wait(200);
 assert(w1.frame.width === 700, 'Second monitor must restore geometry');
-assert(Main.notices.length === 1, 'Suspension must notify once');
+assert(Main.notices.length === noticesBeforeMonitor + 1, 'Suspension must notify once');
 monitors = 1; Main.layoutManager.emit('monitors-changed'); await wait(500);
 assert(w1.frame.width === 700, 'Suspended controller must not auto-resume');
 ext.disable();
@@ -216,14 +311,49 @@ assert(Main.wm.bindings.has('toggle-tiling'), 'Binding should recover once confl
 
 // Panel menu actions use the opening window even if popup activation closes first.
 display.focus_window = w1; display.emit('notify::focus-window');
-const button = Main.panel.indicators.get('just@trait.com.br');
-const preferencesItem = button.menu.items.find(item => item.label.text === (english ? 'Preferences…' : 'Preferências…'));
+const button = Main.panel.indicators.get('justtiling@trait.com.br');
+assert(button.visible && !settings.get_boolean('hide-panel-icon'), 'Panel icon must default visible');
+const movesBeforeHiding = w1.moves, bindingsBeforeHiding = Main.wm.bindings.size;
+button.menu.open();
+settings.set_boolean('hide-panel-icon', true);
+assert(!button.visible && !button.container.visible && !button.menu.isOpen, 'Hiding the panel icon must close the menu immediately');
+assert(ext._controller.running && Main.wm.bindings.size === bindingsBeforeHiding && w1.moves === movesBeforeHiding,
+    'Hiding the icon must not stop tiling, unregister shortcuts or reflow windows');
+settings.set_boolean('hide-panel-icon', false);
+assert(button.visible && button.container.visible && Main.panel.indicators.size === 1, 'Showing the icon must reuse its existing indicator');
+const preferencesItem = button.menu.items.find(item => item.label?.text === (english ? 'Preferences…' : 'Preferências…'));
 assert(preferencesItem, 'Session language applies to menu preferences');
 preferencesItem.emit('activate');
 assert(ext.preferencesOpened === 1, 'Panel must call the extension preferences launcher');
-const floatingItem = button.menu.items.find(item => item.label.text.startsWith(english ? 'Toggle the active' : 'Alternar'));
-const appRuleItem = button.menu.items.find(item => item.label.text.startsWith(english ? 'Always float' : 'Sempre'));
-const enabledItem = button.menu.items.find(item => item.label.text.startsWith(english ? 'Tile windows' : 'Organizar'));
+const floatingItem = button.menu.items.find(item => item.label?.text.startsWith(english ? 'Toggle the active' : 'Alternar'));
+const appRuleItem = button.menu.items.find(item => item.label?.text.startsWith(english ? 'Always float' : 'Sempre'));
+const enabledItem = button.menu.items.find(item => item.label?.text.startsWith(english ? 'Tile windows' : 'Organizar'));
+const pinItem = button.menu.items.find(item => item.label?.text === (english ? "Pin this application's position and size" : 'Fixar posição e tamanho deste aplicativo'));
+assert(pinItem && settings.get_strv('toggle-pin')[0] === '<Super>y', 'Pin menu and default binding must exist');
+button.menu.open(); button.menu.close();
+display.focus_window = w2;
+pinItem.toggle(); await wait(100);
+assert(Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 1,
+    'Pin menu must save the window captured when opening the popup');
+assert(Main.notices.at(-1).message === (english ? 'Application pinned. Preferred position and size saved.' : 'Aplicativo fixado. Posição e tamanho preferidos salvos.'),
+    'Pin confirmation must follow the session language');
+display.focus_window = w1; display.emit('notify::focus-window');
+Main.wm.press('toggle-pin'); await wait(100);
+assert(Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 0,
+    'Pin shortcut must unpin the active application');
+assert(Main.notices.at(-1).message === (english ? 'Application unpinned.' : 'Aplicativo desafixado.'),
+    'Unpin shortcut must confirm the resulting state');
+settings.set_strv('toggle-pin', ['<Super><Shift>y']); await wait(50);
+assert(Main.wm.bindings.get('toggle-pin').settings.get_strv('toggle-pin')[0] === '<Super><Shift>y',
+    'Changing the pin shortcut must refresh its native registration');
+const beforePinNotices = Main.notices.length;
+Main.wm.press('toggle-pin');
+assert(Main.notices.length === beforePinNotices + 1 && Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 1,
+    'A customized pin binding must also confirm successful pinning exactly once');
+Main.wm.press('toggle-pin');
+assert(Main.notices.length === beforePinNotices + 2 && Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 0,
+    'A customized binding must also confirm unpinning exactly once');
+settings.reset('toggle-pin'); await wait(50);
 button.menu.open(); button.menu.close();
 display.focus_window = w2;
 floatingItem.emit('activate'); await wait(500);
@@ -250,15 +380,22 @@ button.menu.close();
 display.focus_window = null; display.emit('notify::focus-window');
 assert(!floatingItem.sensitive && !appRuleItem.sensitive, 'Panel actions require a valid window');
 
-// Real Meta enum decoding, native grab ownership and live menu preference.
-const resizeItem = button.menu.items.find(item => item.label.text === (english
-    ? 'Resize splits when releasing a window edge' : 'Ajustar divisões ao soltar a borda'));
-assert(resizeItem, 'Session language applies to Shell menu');
-assert(resizeItem.state, 'Shared-border resizing should default on');
-resizeItem.toggle(); await wait(100);
-assert(!settings.get_boolean('resize-splits'), 'Resize menu preference was not persisted');
+// Real Meta enum decoding and live Preferences settings remain supported.
+assert(!button.menu.items.some(item => item.label?.text === (english
+    ? 'Resize splits when releasing a window edge' : 'Ajustar divisões ao soltar a borda')),
+    'Split resizing belongs only in Preferences');
+assert(!button.menu.items.some(item => item.label?.text === (english
+    ? 'Swap windows by dragging and dropping' : 'Trocar janelas ao arrastar e soltar')),
+    'Drag swapping belongs only in Preferences');
+const {PopupSeparatorMenuItem} = await import(`${root}/tests/fixtures/popupMenu.js`);
+const floatingIndex = button.menu.items.indexOf(floatingItem);
+assert(button.menu.items[floatingIndex - 1] instanceof PopupSeparatorMenuItem &&
+    button.menu.items[floatingIndex + 1] instanceof PopupSeparatorMenuItem,
+    'The temporary floating action must have separators above and below');
+settings.set_boolean('resize-splits', false); await wait(100);
+assert(!ext._controller.resizeSplits, 'Preferences must still control split resizing');
 settings.set_boolean('resize-splits', true); await wait(100);
-assert(resizeItem.state, 'Resize menu must reflect external preference changes');
+assert(ext._controller.resizeSplits, 'Preferences must still restore split resizing');
 const w5 = new Window(5); windows.push(w5); display.emit('window-created', w5); await wait(500);
 const leftWidth = w1.frame.width, rightWidth = w5.frame.width;
 const leftMoves = w1.moves, rightMoves = w5.moves;
@@ -276,8 +413,7 @@ await wait(500);
 assert(w1.frame.width === leftWidth + 60 && w5.frame.width === rightWidth - 60,
     'Keyboard resize enum lost its shared boundary');
 // Mouse moves preview compatible destinations; geometry only swaps on release.
-const swapItem = button.menu.items.find(item => item.label.text.startsWith(english ? 'Swap windows' : 'Trocar janelas'));
-assert(swapItem.state, 'Drag swap should default on');
+assert(settings.get_boolean('drag-swap'), 'Drag swap should default on');
 const beforeSwap1 = {...w1.frame}, beforeSwap5 = {...w5.frame};
 pointer = {x: beforeSwap5.x + beforeSwap5.width / 2, y: beforeSwap5.y + 100};
 const swapMoves1 = w1.moves, swapMoves5 = w5.moves, reads = pointerReads;
@@ -341,15 +477,15 @@ display.emit('grab-op-begin', w1, Meta.GrabOp.MOVING_UNCONSTRAINED);
 pointer = {x: w5.frame.x + 100, y: w5.frame.y + 100};
 display.emit('grab-op-end', w1, Meta.GrabOp.MOVING_UNCONSTRAINED); await wait(200);
 assert(JSON.stringify(w1.frame) === JSON.stringify(cancelFrame), 'Cancelled move swapped the windows');
-swapItem.toggle(); await wait(100);
-assert(!settings.get_boolean('drag-swap'), 'Drag swap menu did not persist preference');
+settings.set_boolean('drag-swap', false); await wait(100);
+assert(!ext._controller.dragSwap, 'Preferences must still disable drag swapping');
 display.emit('grab-op-begin', w5, Meta.GrabOp.MOVING);
 const floated = {...w5.frame, x: 100, y: 110}; w5.frame = floated; w5.emit('position-changed');
 display.emit('grab-op-end', w5, Meta.GrabOp.MOVING); await wait(500);
 assert(!w5.above && JSON.stringify(w5.frame) === JSON.stringify(floated),
     'Disabling drag swaps should preserve the original floating behavior');
 settings.set_boolean('drag-swap', true); await wait(100);
-assert(swapItem.state, 'Drag swap menu did not reflect external preference change');
+assert(ext._controller.dragSwap, 'Preferences must still restore drag swapping');
 w5.emit('unmanaging'); windows.splice(windows.indexOf(w5), 1); await wait(200);
 assert(w5.handlers.size === 0 && w1.frame.width === 1570, 'Resized window closure leaked ownership');
 
@@ -437,7 +573,7 @@ assert(w8.frame.x > w1.frame.x, 'Switching back should insert the next window ri
 w8.emit('unmanaging'); windows.splice(windows.indexOf(w8), 1); await wait(200);
 
 // Live setting changes apply only to later insertions. A new window may take
-// focus before reconciliation, but the previously tiled focus stays protected.
+// focus before reconciliation, but unsaved areas must still balance.
 const stableTree = ext._controller.tree, stableMoves = w1.moves;
 settings.reset('preserve-focused-window'); await wait(100);
 assert(ext._controller.preserveFocusedWindow && ext._controller.tree === stableTree && w1.moves === stableMoves,
@@ -445,11 +581,11 @@ assert(ext._controller.preserveFocusedWindow && ext._controller.tree === stableT
 display.focus_window = w1; display.emit('notify::focus-window');
 const peer = new Window(10); windows.push(peer); display.emit('window-created', peer); await wait(500);
 display.focus_window = w1; display.emit('notify::focus-window');
-const focusFrame = {...w1.frame};
 const newcomer = new Window(11); windows.push(newcomer);
 display.focus_window = newcomer; display.emit('window-created', newcomer); display.emit('notify::focus-window');
 await wait(500);
-assert(JSON.stringify(w1.frame) === JSON.stringify(focusFrame), 'New window must preserve previous focused tile size');
+const balancedAreas = [w1, peer, newcomer].map(win => win.frame.width * win.frame.height);
+assert(Math.max(...balancedAreas) / Math.min(...balancedAreas) < 1.1, 'Opening a third window must balance unsaved areas');
 assert(ext._controller.records.get(11).state === 'tiled', 'Newcomer should fit among other tiles');
 newcomer.emit('unmanaging'); windows.splice(windows.indexOf(newcomer), 1); await wait(200);
 peer.emit('unmanaging'); windows.splice(windows.indexOf(peer), 1); await wait(200);
@@ -577,6 +713,116 @@ settings.reset('debug');
 assert(!ext._adapter.traceWindows, 'Capture must stop when debug resets');
 ext._adapter.log = oldLog;
 
+// Optional rounded corners decorate every application window independently of focus/tiling.
+const roundedName = 'justtiling-rounded-corners';
+assert(!settings.get_boolean('round-window-corners') && ext._corners.windows.size === 0,
+    'Rounded corners must default off without retaining native actor observers');
+const roundFloat = new Window(98), roundOther = new Window(99), roundPopup = new Window(100);
+roundFloat.get_wm_class = () => 'round.floating';
+roundOther.workspace = otherWorkspace;
+roundPopup.get_window_type = () => Meta.WindowType.NOTIFICATION;
+const roundRules = settings.get_strv('floating-apps');
+settings.set_strv('floating-apps', [...roundRules, 'wm-class:round.floating']);
+for (const win of [roundFloat, roundOther, roundPopup]) { windows.push(win); display.emit('window-created', win); }
+await wait(100);
+const framesBeforeRounding = JSON.stringify(windows.map(win => win.frame));
+const movesBeforeRounding = windows.reduce((sum, win) => sum + win.moves, 0);
+const foreignEffect = {};
+roundFloat.actor.add_effect_with_name('other-extension-effect', foreignEffect);
+settings.set_boolean('round-window-corners', true);
+assert(w1.actor.effects.has(roundedName) && roundFloat.actor.effects.has(roundedName) &&
+    roundOther.actor.effects.has(roundedName) && !roundPopup.actor.effects.has(roundedName),
+    'Rounding must cover tiled, always-floating and inactive workspace apps, but never notifications');
+assert(ext._controller.records.get(98).state === 'floating' &&
+    JSON.stringify(windows.map(win => win.frame)) === framesBeforeRounding &&
+    windows.reduce((sum, win) => sum + win.moves, 0) === movesBeforeRounding,
+    'Turning on a visual effect must not change geometry, tiling state or native focus');
+display.focus_window = roundFloat; display.emit('notify::focus-window');
+const radiusMoves = roundFloat.moves;
+const roundScale = roundFloat.actor.effects.get(roundedName).geometry.scale;
+settings.set_int('corner-radius', 16);
+assert(roundFloat.actor.effects.get(roundedName).geometry.radius === 16 * roundScale &&
+    ext._border.widget.style.includes('border-radius: 16px'),
+    'Radius changes must immediately update both existing shaders and the focus border');
+assert(roundFloat.moves === radiusMoves, 'Changing visual radius must not reflow or move windows');
+settings.set_int('corner-radius', 0);
+assert(ext._corners.windows.size === 0 && !roundFloat.actor.effects.has(roundedName) &&
+    ext._border.widget.style.includes('border-radius: 0px'),
+    'Zero radius must remove shaders while allowing a square focus border');
+settings.set_int('corner-radius', 32);
+assert(roundFloat.actor.effects.get(roundedName).geometry.radius === 32 * roundScale &&
+    ext._border.widget.style.includes('border-radius: 32px'), 'Increasing radius must restore matching visual effects');
+settings.reset('corner-radius');
+const thicknessBounds = JSON.stringify(roundFloat.actor.effects.get(roundedName).geometry.bounds);
+for (const width of [1, 2, 7, 8]) {
+    settings.set_int('focus-border-width', width);
+    assert(ext._border.widget.style.includes(`border: ${width}px solid`) &&
+        roundFloat.actor.effects.get(roundedName).geometry.focusBorderWidth === width * roundScale,
+        'Thickness must update both the decoration and its native margin probes immediately');
+    assert(roundFloat.moves === radiusMoves &&
+        JSON.stringify(roundFloat.actor.effects.get(roundedName).geometry.bounds) === thicknessBounds,
+        'Thicker borders must draw inward without moving or resizing windows');
+}
+Main.overview.visible = true; Main.overview.emit('showing');
+assert(ext._border.widget === null && roundFloat.actor.effects.get(roundedName).geometry.focusBorderWidth === 0,
+    'Overview must remove the focus decoration from the shadow probe policy');
+Main.overview.visible = false; Main.overview.emit('hidden');
+assert(roundFloat.actor.effects.get(roundedName).geometry.focusBorderWidth === 8 * roundScale,
+    'Leaving overview must restore the visible thickness policy');
+display.focus_window = w1; display.emit('notify::focus-window');
+assert(roundFloat.actor.effects.get(roundedName).geometry.focusBorderWidth === 0,
+    'Unfocused windows must not use the focus border thickness of other windows');
+settings.reset('focus-border-width');
+settings.set_boolean('focus-border', false);
+display.focus_window = roundFloat; display.emit('notify::focus-window');
+assert(w1.actor.effects.has(roundedName) && roundFloat.actor.effects.has(roundedName),
+    'Rounding must remain on unfocused windows and work without the focus border');
+roundFloat.flags = Meta.MaximizeFlags.BOTH; roundFloat.emit('notify::maximized-horizontally');
+assert(!roundFloat.actor.effects.has(roundedName), 'Maximizing must detach the shader, not only hide it');
+roundFloat.flags = 0; roundFloat.emit('notify::maximized-horizontally');
+assert(roundFloat.actor.effects.has(roundedName), 'Restoring must reapply rounded corners');
+roundFloat.is_fullscreen = () => true; roundFloat.emit('notify::fullscreen');
+assert(!roundFloat.actor.effects.has(roundedName), 'Fullscreen must remove rounded corners');
+roundFloat.is_fullscreen = () => false; roundFloat.emit('notify::fullscreen');
+roundFloat.minimized = true; roundFloat.emit('notify::minimized');
+assert(!roundFloat.actor.effects.has(roundedName), 'Minimized apps must not keep active shaders');
+roundFloat.minimized = false; roundFloat.emit('notify::minimized');
+roundFloat.frame.width = 600; roundFloat.actor.width = 600; roundFloat.actor.emit('notify::allocation');
+assert(roundFloat.actor.effects.get(roundedName).geometry.bounds[2] === 600,
+    'Actor allocation must update frame bounds without a focus change');
+Main.sessionMode.isLocked = true; Main.sessionMode.emit('updated');
+assert(ext._corners.windows.size === 0 && !roundFloat.actor.effects.has(roundedName),
+    'Locking the session must detach all effects and their observers');
+Main.sessionMode.isLocked = false; Main.sessionMode.emit('updated');
+assert(roundFloat.actor.effects.has(roundedName), 'Unlock must restore only eligible application effects');
+roundOther.emit('unmanaging'); windows.splice(windows.indexOf(roundOther), 1);
+assert(!ext._corners.windows.has(99) && !roundOther.actor.effects.has(roundedName),
+    'Closing a window must detach its effect and release the native actor');
+const roundActor = roundFloat.actor; roundActor.destroy();
+ext._corners.sync();
+assert(!ext._corners.windows.has(98), 'A dying actor must not be reattached before native unmanaging');
+roundFloat.actor = null;
+assert(!ext._corners.windows.has(98), 'Native actor destruction must release the rounding entry');
+roundFloat.actor = new WindowActor(); roundFloat.mapped = false; shellwm.emit('map', roundFloat.actor);
+assert(!roundFloat.actor.effects.has(roundedName), 'Early map must wait for a mapped application');
+roundFloat.mapped = true; roundFloat.actor.emit('first-frame');
+assert(roundFloat.actor.effects.has(roundedName), 'First frame must round a late actor without focus changes');
+settings.set_boolean('tiling-enabled', false);
+assert(roundFloat.actor.effects.has(roundedName) && w1.actor.effects.has(roundedName),
+    'Rounding must be independent of the automatic tiling switch');
+const replacementForeign = {};
+roundFloat.actor.add_effect_with_name('other-extension-effect', replacementForeign);
+settings.set_boolean('round-window-corners', false);
+assert(ext._corners.windows.size === 0 && !roundFloat.actor.effects.has(roundedName) &&
+    roundFloat.actor.effects.get('other-extension-effect') === replacementForeign,
+    'Turning rounding off must synchronously remove only our own effects and observers');
+roundFloat.actor.remove_effect(replacementForeign);
+for (const win of [roundFloat, roundPopup]) { win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1); }
+settings.set_strv('floating-apps', roundRules);
+settings.set_boolean('focus-border', true);
+settings.set_boolean('tiling-enabled', true); await wait(500);
+display.focus_window = w1; display.emit('notify::focus-window');
+
 // Optional focus border attaches to only the focused window, never to chrome.
 assert(settings.get_boolean('focus-border'), 'Border must default on');
 settings.set_boolean('focus-border', false);
@@ -626,22 +872,123 @@ const deadActor = w1.actor; deadActor.destroy();
 assert(borderWidgets.size === 0, 'Native actor destruction must not leak decoration');
 w1.actor = new WindowActor(); w1.emit('shown'); await wait(100);
 assert(borderWidgets.size === 1, 'Recreated window actor should accept a fresh border');
+// Opening an exempt app can focus it before its actor is mapped or paint-ready.
+const openingFloat = new Window(97);
+openingFloat.get_wm_class = () => 'opening.float';
+const beforeOpeningRules = settings.get_strv('floating-apps');
+settings.set_strv('floating-apps', [...beforeOpeningRules, 'wm-class:opening.float']);
+openingFloat.actor = null;
+windows.push(openingFloat); display.emit('window-created', openingFloat);
+display.focus_window = openingFloat; display.emit('notify::focus-window');
+assert(ext._border.widget === null, 'Early focus without an actor must not draw a border');
+openingFloat.actor = new WindowActor(); openingFloat.actor.childScale = 0;
+shellwm.emit('map', openingFloat.actor);
+assert(ext._border.widget === null && openingFloat.actor.handlers.size > 0,
+    'Opening at zero scale must keep actor observers while waiting to draw');
+openingFloat.actor.childScale = 1; openingFloat.actor.emit('notify::child-transform');
+assert(ext._border.widget && ext._border.actor === openingFloat.actor && display.focus_window === openingFloat,
+    'Opening transform completion must show border without another focus notification');
+const lateSurface = {destroy() { openingFloat.actor.children.delete(this); }};
+openingFloat.actor.add_child(lateSurface);
+assert([...openingFloat.actor.children].at(-1) === ext._border.widget,
+    'A late client surface must not cover the opening focus border');
+await wait(100);
+assert(ext._controller.records.get(97).state === 'floating' && openingFloat.moves === 0,
+    'Opening border recovery must respect floating exceptions and native geometry');
+openingFloat.mapped = false; openingFloat.actor.emit('notify::mapped');
+assert(ext._border.widget === null && openingFloat.actor.handlers.size > 0,
+    'Mapping delay must keep observers without a premature border');
+openingFloat.mapped = true; openingFloat.actor.emit('first-frame');
+assert(ext._border.widget && openingFloat.moves === 0,
+    'First frame must recover the focused border without moving or activating the window');
+openingFloat.frame.width = 0; openingFloat.actor.emit('notify::allocation');
+assert(ext._border.widget === null, 'An unallocated frame must wait without drawing');
+openingFloat.frame.width = 700; openingFloat.actor.emit('notify::allocation');
+assert(ext._border.widget, 'Allocation becoming ready must restore the border without a focus change');
+openingFloat.actor.childScale = 0; openingFloat.actor.emit('notify::child-transform');
+display.focus_window = w1; display.emit('notify::focus-window');
+assert(openingFloat.actor.handlers.size === 0 && ext._border.actor === w1.actor,
+    'Changing focus while waiting must disconnect the old target');
+openingFloat.actor.childScale = 1; openingFloat.actor.emit('first-frame');
+assert(ext._border.actor === w1.actor, 'Late frames must never return the border to an unfocused app');
+display.focus_window = openingFloat; display.emit('notify::focus-window');
+openingFloat.actor.childScale = 0; openingFloat.actor.emit('notify::child-transform');
+settings.set_boolean('focus-border', false);
+assert(openingFloat.actor.handlers.size === 0 && ext._border.widget === null,
+    'Disabling the border while waiting must release pending actor observers');
+settings.set_boolean('focus-border', true);
+openingFloat.emit('unmanaging'); windows.splice(windows.indexOf(openingFloat), 1);
+assert(openingFloat.actor.handlers.size === 0 && ext._border.widget === null,
+    'Closing before animation completion must release pending actor observers');
+settings.set_strv('floating-apps', beforeOpeningRules);
+display.focus_window = w1; display.emit('notify::focus-window');
+
+// Preferences and modal dialogs receive a border without entering the grid.
+const preferencesDialog = new Window(96);
+preferencesDialog.get_window_type = () => Meta.WindowType.DIALOG;
+preferencesDialog.get_transient_for = () => w1;
+preferencesDialog.is_skip_taskbar = () => true;
+windows.push(preferencesDialog); display.emit('window-created', preferencesDialog);
+display.focus_window = preferencesDialog; display.emit('notify::focus-window');
+assert(ext._border.actor === preferencesDialog.actor && !ext._controller.records.has(96),
+    'Focused preferences dialog must receive its border before tiling classification');
+await wait(100);
+assert(ext._controller.records.get(96).state === 'excluded' && preferencesDialog.moves === 0 &&
+    ext._border.actor === preferencesDialog.actor, 'Excluded dialogs must remain untouched and highlighted');
+preferencesDialog.flags = Meta.MaximizeFlags.BOTH;
+preferencesDialog.emit('notify::maximized-horizontally');
+assert(ext._border.widget === null, 'Maximized preferences must have no focus border');
+preferencesDialog.flags = 0; preferencesDialog.emit('notify::maximized-horizontally');
+assert(ext._border.actor === preferencesDialog.actor, 'Restored preferences must regain their border');
+for (const type of [Meta.WindowType.MODAL_DIALOG, Meta.WindowType.UTILITY, Meta.WindowType.NORMAL]) {
+    preferencesDialog.get_window_type = () => type; preferencesDialog.emit('notify::window-type');
+    assert(ext._border.actor === preferencesDialog.actor, 'Focused application windows must qualify independently');
+}
+for (const type of [Meta.WindowType.MENU, Meta.WindowType.POPUP_MENU, Meta.WindowType.TOOLTIP,
+    Meta.WindowType.NOTIFICATION, Meta.WindowType.DESKTOP, Meta.WindowType.DOCK]) {
+    preferencesDialog.get_window_type = () => type; preferencesDialog.emit('notify::window-type');
+    assert(ext._border.widget === null, 'System chrome, menus and notifications must not be decorated');
+}
+preferencesDialog.get_window_type = () => Meta.WindowType.DIALOG;
+preferencesDialog.mapped = false; preferencesDialog.emit('notify::mapped');
+assert(ext._border.widget === null, 'Unmapped application window must not receive a border');
+preferencesDialog.mapped = true; preferencesDialog.emit('notify::mapped');
+assert(ext._border.actor === preferencesDialog.actor, 'Mapped dialog should regain the border');
 settings.set_boolean('tiling-enabled', false);
-assert(borderWidgets.size === 0, 'Soft off must remove border');
+assert(ext._border.actor === preferencesDialog.actor, 'Pausing tiling must preserve a dialog focus border');
+settings.set_boolean('focus-border', false);
+assert(ext._border.widget === null, 'Focus border preference must work while tiling is off');
+settings.set_boolean('focus-border', true);
+assert(ext._border.actor === preferencesDialog.actor, 'Focus border must work when tiling is off');
+preferencesDialog.emit('unmanaging'); windows.splice(windows.indexOf(preferencesDialog), 1);
+assert(ext._border.widget === null && preferencesDialog.actor.handlers.size === 0,
+    'Closing an unmanaged focused dialog must detach its border and target observers');
+display.focus_window = w1; display.emit('notify::focus-window');
+assert(borderWidgets.size === 1, 'Turning tiling off must preserve the independent focus border');
 settings.set_boolean('tiling-enabled', true); await wait(500);
 assert(borderWidgets.size === 1, 'Soft on should recreate border for managed focus');
+settings.set_boolean('round-window-corners', true);
+const roundedAtDisable = [...ext._corners.windows.values()].map(entry => entry.actor);
+assert(roundedAtDisable.length > 0, 'Teardown test must begin with active rounding');
 ext.disable();
+assert(roundedAtDisable.every(actor => !actor.effects.has(roundedName) && actor.handlers.size === 0),
+    'Disabling the extension must synchronously remove shaders and all rounding observers');
+settings.set_boolean('round-window-corners', false);
 assert(borderWidgets.size === 0 && Main.overview.handlers.size === 0 && Main.sessionMode.handlers.size === 0,
     'Disable leaked border or shell visibility observers');
 assert(w1.frame.width === manualFrame.width, 'New management interval must restore its own snapshot');
-assert(Main.wm.bindings.size === 0 && display.handlers.size === 0, 'MVP cleanup leaked resources');
+assert(Main.wm.bindings.size === 0 && display.handlers.size === 0 && shellwm.handlers.size === 0, 'MVP cleanup leaked resources');
 assert(w4.handlers.size === 0 && manager.handlers.size === 0, 'MVP workspace cleanup leaked observers');
 assert(Main.panel.indicators.size === 0 && button.menu.handlers.size === 0, 'Panel leaked on disable');
 assert(floatingItem.handlers.size === 0 && appRuleItem.handlers.size === 0, 'Menu item handlers leaked');
 
-// A direct disable/enable cycle on the same extension instance must reclaim all bindings.
+// A direct disable/enable cycle must retain visibility preferences and reclaim all bindings.
+settings.set_boolean('hide-panel-icon', true);
 ext.enable(); await wait(500);
-assert(Main.wm.bindings.size === 8, 'Reload while enabled lost directional keybindings');
+assert(Main.wm.bindings.size === 9, 'Reload while enabled lost directional keybindings');
+assert(!ext._indicator.button.visible && !ext._indicator.button.container.visible,
+    'Reload must apply the saved hidden state to the indicator and its panel space');
+settings.set_boolean('hide-panel-icon', false);
 ext.disable();
 assert(nativeKeys.get_strv('unmaximize').includes('<Super>Down'), 'Reload cleanup lost native arrows');
 Main.panel.fail = true;
@@ -742,5 +1089,48 @@ ext._settings.set_strv('floating-apps', previousFloatingApps);
 ext.disable();
 assert(Main.modalCount === 0 && borderWidgets.size === 0 && display.handlers.size === 0,
     'Maximization test must leave no observers or UI resources');
+// A previous UUID activated later must suspend the new extension as well.
+ext = new JustTiling(); ext.enable(); await wait(300);
+Main.extensionManager.extensions.set('just@trait.com.br', {state: 1});
+Main.extensionManager.emit('extension-state-changed');
+assert(ext._controller.suspended && !Main.wm.bindings.has('swap-select'),
+    'Activating the previous UUID must suspend tiling and release its shortcuts');
+ext.disable(); Main.extensionManager.extensions.clear();
+
+// Existing preferences belong to the stable schema/path, not the extension UUID.
+// Seed an old installation's customized settings, then load the new extension.
+const legacyPreferences = new Gio.Settings({schema_id: 'org.gnome.shell.extensions.justtiling'});
+legacyPreferences.set_int('inner-gap', 23); legacyPreferences.set_int('outer-gap', 17);
+legacyPreferences.set_boolean('tiling-enabled', false);
+legacyPreferences.set_boolean('focus-border', false);
+legacyPreferences.set_boolean('learn-layouts', false);
+legacyPreferences.set_strv('floating-apps', ['gtk-app-id:org.test.Persistent']);
+legacyPreferences.set_strv('cycle-focus', ['<Super><Alt>q']);
+legacyPreferences.set_string('learned-layouts', JSON.stringify({version: 1, apps: {
+    'app-id:example.desktop': {x: 0, y: 0, width: 0.5, height: 1},
+}}));
+legacyPreferences.set_int('preferences-version', 4);
+const preferenceKeys = legacyPreferences.settings_schema.list_keys();
+const previousValues = new Map(preferenceKeys.map(key => [key, legacyPreferences.get_value(key).print(true)]));
+Main.extensionManager.extensions.set('o-tiling@test', {state: 1, metadata: {name: 'Other Tiler'}});
+ext = new JustTiling(); ext.enable();
+assert(messageTray.notifications.size === 0 && !ext._indicator.manager.visible && !ext._controller.suspended,
+    'An explicitly disabled tiling preference must not prompt about conflicts');
+assert(ext.uuid === 'justtiling@trait.com.br' && Main.panel.indicators.has(ext.uuid) &&
+    !Main.panel.indicators.has('just@trait.com.br'), 'New UUID must own the panel entry');
+for (const key of preferenceKeys)
+    assert(ext._settings.get_value(key).print(true) === previousValues.get(key),
+        `UUID migration must preserve preference: ${key}`);
+assert(!ext._controller.running && ext._controller.gaps.inner === 23 && ext._controller.gaps.outer === 17 &&
+    ext._controller.floatingApps.includes('gtk-app-id:org.test.Persistent') &&
+    ext._controller.learnedLayouts['app-id:example.desktop'], 'New UUID must load existing user preferences');
+ext.disable();
+for (const key of preferenceKeys)
+    assert(legacyPreferences.get_value(key).print(true) === previousValues.get(key),
+        `Disabling the new UUID must preserve preference: ${key}`);
+assert(Main.panel.indicators.size === 0 && display.handlers.size === 0 && Main.modalCount === 0,
+    'UUID migration must clean up its UI and observers');
+Main.extensionManager.extensions.clear();
+assert(messageTray.notifications.size === 0, 'Disabling must leave no conflict notifications');
 assert(aboveChanges === 0, 'Extension must never impose or clear native always-on-top flags');
-print('Shell adapter smoke OK: lifecycle, workspaces, settings, shortcut migration, conflicts, native-menu doubles, shared-border resizing, native drag swapping, optional focus border doubles, numbered keyboard swaps, initial/manual maximization, restore-to-grid and cleanup.');
+print('Shell adapter smoke OK: lifecycle, workspaces, settings, shortcut migration, conflicts, native-menu doubles, shared-border resizing, native drag swapping, optional focus border doubles, numbered keyboard swaps, initial/manual maximization, restore-to-grid, UUID migration and cleanup.');

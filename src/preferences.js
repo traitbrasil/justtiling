@@ -18,16 +18,20 @@ export function buildPreferences(window, settings, metadata = {}) {
     const behavior = new Adw.PreferencesGroup({title: _("Tiling"),
         description: _("Changes are saved automatically. Tiling supports one monitor.")});
     for (const [key, title] of [
+        ['hide-panel-icon', _("Hide the panel icon")],
         ['tiling-enabled', _("Tile windows automatically")],
         ['resize-splits', _("Resize splits when releasing a window edge")],
         ['drag-swap', _("Swap windows by dragging and dropping")],
         ['focus-border', _("Highlight the focused window")],
-        ['preserve-focused-window', _("Preserve the focused window size")],
+        ['round-window-corners', _("Round window corners")],
+        ['preserve-focused-window', _("Prefer splitting other windows")],
     ]) {
         const row = new Adw.SwitchRow({title,
-            subtitle: key === 'focus-border' ? _("A border using the GNOME accent color.") :
+            subtitle: key === 'hide-panel-icon' ? _("Tiling and keyboard shortcuts keep working while the icon is hidden.") :
+                key === 'focus-border' ? _("A border using the GNOME accent color.") :
+                key === 'round-window-corners' ? _("Applies to tiled and floating windows. Maximized and fullscreen windows keep their original appearance.") :
                 key === 'preserve-focused-window' ?
-                    _("When opening windows, shrink other windows first. Shrink the focused window only when necessary.") : ''});
+                    _("For equally balanced layouts, prefer splitting another window. Pinned and learned sizes take priority.") : ''});
         settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
         bindings.push([row, 'active']);
         controls[key] = row;
@@ -96,13 +100,56 @@ export function buildPreferences(window, settings, metadata = {}) {
     signals.add(settings, 'changed::learned-layouts', refreshLearning);
     signals.add(forgetAll, 'clicked', () => settings.set_string('learned-layouts', writeLearning({})));
     refreshLearning(); page.add(learning);
+    const pinning = new Adw.PreferencesGroup({title: _("Pinned applications"),
+        description: _("Pin an application from the panel menu. Its saved region takes priority when space allows, independently of layout learning.")});
+    const unpinAll = new Gtk.Button({label: _("Clear all"), valign: Gtk.Align.CENTER});
+    const unpinAllRow = new Adw.ActionRow({title: _("Unpin all applications")});
+    unpinAllRow.add_suffix(unpinAll); unpinAllRow.activatable_widget = unpinAll;
+    pinning.add(unpinAllRow);
+    const pinnedList = new Adw.ExpanderRow({title: _("Pinned applications"), expanded: false});
+    pinning.add(pinnedList);
+    let pinnedRows = [], unpinButtons = [];
+    const pinnedSignals = new Connections();
+    const refreshPinning = () => {
+        pinnedSignals.clear();
+        for (const row of pinnedRows) pinnedList.remove(row);
+        pinnedRows = []; unpinButtons = [];
+        const apps = readLearning(settings.get_string('pinned-layouts'));
+        unpinAll.sensitive = Object.keys(apps).length > 0;
+        pinnedList.subtitle = format(_("Applications: %s"), Object.keys(apps).length);
+        for (const [key, frame] of Object.entries(apps).sort(([a], [b]) => a.localeCompare(b))) {
+            const percent = value => Math.round(value * 100);
+            const row = new Adw.ActionRow({title: key.slice(key.indexOf(':') + 1), use_markup: false,
+                subtitle: format(_("Position: %s%%, %s%% · Size: %s%% × %s%%"), percent(frame.x), percent(frame.y), percent(frame.width), percent(frame.height))});
+            const button = new Gtk.Button({label: _("Unpin"), valign: Gtk.Align.CENTER});
+            row.add_suffix(button);
+            pinnedSignals.add(button, 'clicked', () => {
+                const current = readLearning(settings.get_string('pinned-layouts'));
+                delete current[key];
+                settings.set_string('pinned-layouts', writeLearning(current));
+            });
+            pinnedList.add_row(row); pinnedRows.push(row); unpinButtons.push(button);
+        }
+        if (!pinnedRows.length) {
+            const row = new Adw.ActionRow({title: _("No pinned applications"),
+                subtitle: _("Select a tiled window and enable pinning in the panel menu.")});
+            pinnedList.add_row(row); pinnedRows.push(row);
+        }
+    };
+    signals.add(settings, 'changed::pinned-layouts', refreshPinning);
+    signals.add(unpinAll, 'clicked', () => settings.set_string('pinned-layouts', writeLearning({})));
+    refreshPinning(); page.add(pinning);
     const shortcuts = shortcutPreferences(window, settings);
     page.add(shortcuts.group);
     const gaps = new Adw.PreferencesGroup({title: _("Gaps"),
-        description: _("Applied immediately to the layout. Values range from 0 to 64.")});
-    for (const [key, title] of [['inner-gap', _("Between windows")], ['outer-gap', _("At the work area edges")]]) {
+        description: _("Changes apply immediately to gaps, corners and the focus border.")});
+    for (const [key, title] of [['inner-gap', _("Between windows")], ['outer-gap', _("At the work area edges")],
+        ['corner-radius', _("Corner radius (px)")],
+        ['focus-border-width', _("Focus border width (px)")]]) {
         const row = new Adw.SpinRow({title, digits: 0, numeric: true,
-            adjustment: new Gtk.Adjustment({lower: 0, upper: 64, step_increment: 1, page_increment: 4})});
+            subtitle: key === 'focus-border-width' ? _("From 1 to 8 px, drawn inside the window.") : key === 'corner-radius' ? _("Used by the focus border and rounded windows. Zero disables forced window rounding.") : '',
+            adjustment: new Gtk.Adjustment({lower: key === 'focus-border-width' ? 1 : 0,
+                upper: key === 'focus-border-width' ? 8 : 64, step_increment: 1, page_increment: 4})});
         settings.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
         bindings.push([row, 'value']);
         controls[key] = row;
@@ -157,7 +204,7 @@ export function buildPreferences(window, settings, metadata = {}) {
         if (disposed) return;
         disposed = true;
         shortcuts.dispose();
-        learnedSignals.clear(); rowSignals.clear(); signals.clear();
+        learnedSignals.clear(); pinnedSignals.clear(); rowSignals.clear(); signals.clear();
         for (const [object, property] of bindings) Gio.Settings.unbind(object, property);
     };
     signals.add(window, 'close-request', () => { dispose(); return false; });
@@ -190,6 +237,7 @@ export function buildPreferences(window, settings, metadata = {}) {
     aboutPage.add(aboutGroup);
     window.add(aboutPage);
     return {controls, reset, page, shortcuts, dispose,
+        pinning: {unpinAll, expander: pinnedList, get rows() { return pinnedRows; }, get unpinButtons() { return unpinButtons; }},
         learning: {forgetAll, expander: learnedList, get rows() { return learnedRows; }, get forgetButtons() { return forgetButtons; }},
         about: {page: aboutPage, group: aboutGroup, versionRow, developerRow, developerLink, projectRow, projectLink, contactRow, contactLink}, get disposed() { return disposed; },
         exceptionExpander: exceptionList, get exceptionRows() { return rows; }, get removeButtons() { return removeButtons; }};

@@ -5,7 +5,7 @@
 Open Preferences from the panel menu or run:
 
 ```bash
-gnome-extensions prefs just@trait.com.br
+gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Changes are saved automatically. They belong to the current desktop user. The About page shows the installed extension version from its metadata, along with developer and project contacts.
@@ -17,14 +17,19 @@ Changes are saved automatically. They belong to the current desktop user. The Ab
 | Automatic tiling | On | Organizes compatible windows |
 | Resize splits on release | On | Adjusts shared splits after a resize |
 | Drag-and-drop swaps | On | Exchanges windows when dropped on another tile |
-| Highlight the focused window | On | Uses the GNOME accent color |
-| Preserve focused window size | On | Shrinks other windows first when feasible |
+| Hide the panel icon | Off | Hides the indicator immediately; tiling and shortcuts continue working |
+| Highlight the focused window | On | Uses the GNOME accent color, independently of tiling |
+| Pinned application regions | Empty | Explicit local position and size priorities; removable individually or all at once |
+| Focus border width | 2 px | Draws inward; adjustable from 1 to 8, independent of gaps and corner radius |
+| Corner radius | 8 px | Shared by the focus border and forced rounding; 0–64, with zero disabling forced rounding |
+| Round window corners | Off | Visually rounds tiled and floating applications to match the focus border |
+| Prefer splitting other windows | On | Uses the previous focus as an insertion tie-breaker; equal areas and saved preferences take priority |
 | New window position | Left | Prefers insertion before the active tile |
 | Layout learning | On | Learns successful manual resizing and swaps |
 | Gap between windows | 15 | Layout units, adjustable from 0 to 64 |
 | Gap at work area edges | 15 | Layout units, adjustable from 0 to 64 |
 
-The gaps reset button restores only the two gaps. Shortcut actions have their own reset controls. Resetting those controls does not clear learned application layouts.
+The gaps reset button restores only the two gaps and preserves the corner radius and focus border width. Shortcut actions have their own reset controls. Resetting those controls does not clear learned application layouts.
 
 Learned applications and always-floating application lists start collapsed to keep Preferences compact. Expand either list to manage its entries; the application count updates automatically. The learning switch and clear-all action remain visible.
 
@@ -56,7 +61,7 @@ python3 tools/preview-english.py
 
 This preview uses default, memory-only settings. Changes are discarded on close. It does not change the Shell language or the installed extension.
 
-`LANGUAGE=en gnome-extensions prefs just@trait.com.br` does not reliably force English: the command requests a window from the GNOME service, which uses the session environment. To test the panel menu in English, use a GNOME session configured in English.
+`LANGUAGE=en gnome-extensions prefs justtiling@trait.com.br` does not reliably force English: the command requests a window from the GNOME service, which uses the session environment. To test the panel menu in English, use a GNOME session configured in English.
 
 ## Data and external links
 

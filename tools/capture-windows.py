@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 
-UUID = 'just@trait.com.br'
+UUID = 'justtiling@trait.com.br'
 SCHEMA = 'org.gnome.shell.extensions.justtiling'
 ROOT = Path(__file__).resolve().parents[1]
 

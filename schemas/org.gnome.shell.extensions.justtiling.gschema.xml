@@ -2,12 +2,16 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.justtiling" path="/org/gnome/shell/extensions/justtiling/">
     <key name="preferences-version" type="i">
-      <default>0</default><range min="0" max="2"/>
+      <default>0</default><range min="0" max="4"/>
       <summary>Internal version of Just Tiling preference migrations</summary>
     </key>
     <key name="tiling-enabled" type="b">
       <default>true</default>
       <summary>Manage windows while the extension is loaded</summary>
+    </key>
+    <key name="hide-panel-icon" type="b">
+      <default>false</default>
+      <summary>Hide the panel indicator without disabling tiling or shortcuts</summary>
     </key>
     <key name="debug" type="b">
       <default>false</default>
@@ -37,7 +41,7 @@
     </key>
     <key name="preserve-focused-window" type="b">
       <default>true</default>
-      <summary>Preserve the focused window size when inserting new windows if space allows</summary>
+      <summary>Prefer splitting other windows when equally balanced layouts fit</summary>
     </key>
     <key name="learn-layouts" type="b">
       <default>true</default>
@@ -46,6 +50,25 @@
     <key name="learned-layouts" type="s">
       <default>'{"version":1,"apps":{}}'</default>
       <summary>Local normalized application layout preferences</summary>
+    </key>
+    <key name="pinned-layouts" type="s">
+      <default>'{"version":1,"apps":{}}'</default>
+      <summary>Explicitly pinned application positions and sizes</summary>
+    </key>
+    <key name="toggle-pin" type="as">
+      <default>['&lt;Super&gt;y']</default>
+      <summary>Pin or unpin the active application</summary>
+    </key>
+    <key name="focus-border-width" type="i">
+      <default>2</default><range min="1" max="8"/>
+      <summary>Focus border thickness in logical pixels</summary>
+    </key>
+    <key name="corner-radius" type="i">
+      <default>8</default><range min="0" max="64"/>
+      <summary>Focus border and window corner radius in logical pixels</summary>
+    </key>
+    <key name="round-window-corners" type="b">
+      <default>false</default><summary>Round application window corners to match the focus border</summary>
     </key>
     <key name="focus-border" type="b">
       <default>true</default>
@@ -68,7 +91,7 @@
       <summary>Toggle auto-tiling without unloading the extension</summary>
     </key>
     <key name="toggle-floating" type="as">
-      <default>['&lt;Super&gt;o']</default>
+      <default>['&lt;Super&gt;g']</default>
       <summary>Toggle the focused window between tiled and floating</summary>
     </key>
     <key name="inner-gap" type="i">

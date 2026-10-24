@@ -2,6 +2,7 @@
 import {ids, sameRect, solve} from './tree.js';
 
 function exchange(node, first, second) {
+    if (node.empty) return node;
     if ('id' in node) {
         if (node.id === first) return {id: second};
         if (node.id === second) return {id: first};

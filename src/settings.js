@@ -4,14 +4,15 @@ import {canonicalAccelerator, SHORTCUT_TITLES} from './keybindings.js';
 // Migrate only known defaults; custom, disabled and multiple bindings stay intact.
 export function migrateShortcuts(settings) {
     const version = settings.get_int('preferences-version');
-    if (version >= 2) return;
+    if (version >= 4) return;
     const changes = new Map();
     const legacy = {
-        'toggle-tiling': ['<Super><Control><Alt>t'],
-        'toggle-floating': ['<Super>f', ...(version < 1 ? ['<Super><Control><Alt>f'] : [])],
-        'cycle-focus': ['<Super>c'],
+        'toggle-tiling': version < 2 ? ['<Super><Control><Alt>t'] : [],
+        'toggle-floating': version < 3 ? ['<Super>o', ...(version < 2 ? ['<Super>f'] : []),
+            ...(version < 1 ? ['<Super><Control><Alt>f'] : [])] : [],
+        'cycle-focus': version < 2 ? ['<Super>c'] : [],
     };
-    const next = {'toggle-tiling': '<Super>t', 'toggle-floating': '<Super>o', 'cycle-focus': '<Super>f'};
+    const next = {'toggle-tiling': '<Super>t', 'toggle-floating': '<Super>g', 'cycle-focus': '<Super>f'};
     const custom = new Map();
     for (const key of Object.keys(SHORTCUT_TITLES)) {
         if (settings.get_user_value(key) === null) continue;
@@ -30,5 +31,5 @@ export function migrateShortcuts(settings) {
             changes.set(key, []);
     }
     for (const [key, values] of changes) settings.set_strv(key, values);
-    settings.set_int('preferences-version', 2);
+    settings.set_int('preferences-version', 4);
 }

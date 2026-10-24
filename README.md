@@ -20,7 +20,7 @@
 
 Trait JustTiling arranges your windows as you open and close them, giving each workspace its own layout. Adjust a split, swap two windows, or keep an application floating. Your desktop stays yours to shape.
 
-**Current version: 0.19.3.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
+**Current version: 0.26.1.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
 
 ## Make room for the way you work
 
@@ -29,11 +29,12 @@ Trait JustTiling arranges your windows as you open and close them, giving each w
 | Open a window and the layout makes room. Close it and the remaining windows reclaim the space. | Resize shared edges, swap by dragging or keyboard, and choose where new windows appear. | Toggle tiling, float an application, and customize every shortcut in Preferences. |
 
 - **A layout for every workspace.** Move between tasks without sharing one layout across all workspaces.
-- **Keep your main window comfortable.** Preserve the focused window's size when adding another window, whenever space allows.
+- **Keep your main window comfortable.** Balance unconfigured windows while giving pinned and learned app sizes priority.
 - **Remember your adjustments.** Local layout learning uses successful manual resizing and swaps to guide future application positions and sizes.
 - **Let floating windows float.** Incompatible windows stay floating. Application exceptions keep tools you choose outside the tiling layout.
 - **Preview your swap.** A translucent GNOME-accent overlay marks a compatible destination while you drag.
 - **See your focus.** An optional border follows the GNOME accent color.
+- **Softer corners.** Optionally round tiled and floating application windows to match the focus border.
 - **Make it feel right.** Adjust gaps, insertion side, mouse behavior, and shortcuts through native Preferences.
 
 Layout learning is enabled by default. It is a preference, rather than an exact saved grid: available space and window constraints take priority. Pause it or forget individual applications or all learned layouts at any time.
@@ -46,14 +47,14 @@ You need **GNOME Shell 51**, one logical monitor, and the development tools `git
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/just@trait.com.br.shell-extension.zip
+gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
 ```
 
 **Log out and log back in**, then enable the extension:
 
 ```bash
-gnome-extensions enable just@trait.com.br
-gnome-extensions prefs just@trait.com.br
+gnome-extensions enable justtiling@trait.com.br
+gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Open a few windows to start tiling. Use the panel menu to change behavior or access Preferences. [Installation and updates →](docs/installation.md)
@@ -63,12 +64,13 @@ Open a few windows to start tiling. Use the panel menu to change behavior or acc
 | Default shortcut | Action |
 | --- | --- |
 | **Super + T** | Turn automatic tiling on or off |
-| **Super + O** | Toggle the active window between tiled and floating |
+| **Super + G** | Toggle the active window between tiled and floating |
+| **Super + Y** | Pin or unpin the active application |
 | **Super + F** | Cycle focus through tiled windows |
 | **Super + C** | Swap with a numbered window; Esc or the shortcut again cancels |
 | **Super + ← / → / ↑ / ↓** | Swap the active tile with its neighbor |
 
-All eight actions are configurable. The default Super+Arrow shortcuts temporarily replace conflicting GNOME shortcuts while tiling is active, and restore them when management stops. [Shortcuts and behavior →](docs/user-guide.md)
+All nine actions are configurable. The default Super+Arrow shortcuts temporarily replace conflicting GNOME shortcuts while tiling is active, and restore them when management stops. [Shortcuts and behavior →](docs/user-guide.md)
 
 ## Built for a focused setup
 

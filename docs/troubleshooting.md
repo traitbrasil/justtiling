@@ -7,20 +7,20 @@
 For a manually installed ZIP, log out and log back in before enabling it. Then check the public UUID:
 
 ```bash
-gnome-extensions info just@trait.com.br
+gnome-extensions info justtiling@trait.com.br
 ```
 
 Run commands in the desktop account where you installed it, without `sudo`. The old development UUID, `justtiling@dudu.local`, is a separate package.
 
 ## New code does not appear after updating
 
-Disabling and enabling the extension does not reliably unload imported JavaScript. Install the new ZIP, end the session, sign in again, and enable it. Check the visible version with `gnome-extensions info just@trait.com.br`.
+Disabling and enabling the extension does not reliably unload imported JavaScript. Install the new ZIP, end the session, sign in again, and enable it. Check the visible version with `gnome-extensions info justtiling@trait.com.br`.
 
 ## Windows are not being tiled
 
 Check that automatic tiling is on, the session is GNOME Shell 51, and only one logical monitor is connected. If tiling paused after a second monitor was connected, return to one monitor and resume explicitly.
 
-Confirm that the application is not in **Always-floating applications**. Dialogs and special windows are excluded automatically. Fixed-size windows and windows that cannot fit are also left floating. Super+O cannot override those constraints.
+Confirm that the application is not in **Always-floating applications**. Dialogs and special windows are excluded automatically. Fixed-size windows and windows that cannot fit are also left floating. Super+G cannot override those constraints.
 
 Other window managers may conflict. The extension checks for known conflicts and may refuse activation or pause management when one becomes active.
 
@@ -43,7 +43,7 @@ Choose another combination in Preferences. Most system conflicts are rejected. O
 If a crash interrupted restoration, disable the extension first. From the source checkout, run the recovery tool as the affected desktop user:
 
 ```bash
-gnome-extensions disable just@trait.com.br
+gnome-extensions disable justtiling@trait.com.br
 python3 tools/restore-shortcuts.py
 ```
 
@@ -58,3 +58,7 @@ They follow the GNOME service's session language. Use the [standalone English pr
 Open an [issue](https://github.com/traitbrasil/justtiling/issues) with the extension version, GNOME version, display setup/scaling, application, steps to reproduce, and expected/actual behavior.
 
 Share only relevant, redacted logs. Do not upload an entire session journal, preference export, or private screenshot by default. See [Contributing](../CONTRIBUTING.md).
+
+## A conflicting extension is active
+
+Use **Open Extension Manager** in the notification or Trait JustTiling panel menu. Disable the named conflicting extension, then choose **Resume automatic tiling**. Clearing the conflict does not resume tiling by itself. Other extensions are left under your control. If no manager is installed, install the GNOME Extensions application and use the panel action again.

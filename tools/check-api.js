@@ -63,7 +63,7 @@ for (const name of ['MOVING', 'MOVING_UNCONSTRAINED', 'KEYBOARD_MOVING']) {
 }
 if (typeof Shell.Global.prototype.get_pointer !== 'function') throw new Error('Missing Shell.Global.get_pointer');
 count++;
-for (const method of ['add_child', 'get_child_transform']) {
+for (const method of ['add_child', 'get_child_transform', 'set_child_above_sibling']) {
     if (typeof Meta.WindowActor.prototype[method] !== 'function') throw new Error(`Missing actor ${method}`);
     count++;
 }
@@ -79,7 +79,8 @@ if (r.width !== 1) throw new Error('Mtk.Rectangle unavailable');
 print(`Meta/Shell/St 51 contract OK: ${count} methods, signals, properties and grab operations. No compositor initialized.`);
 
 for (const [type, names] of [[Shell.WindowTracker, ['get_window_app']],
-    [Shell.App, ['get_id', 'is_window_backed']]]) {
+    [Shell.App, ['get_id', 'is_window_backed', 'activate']],
+    [Shell.AppSystem, ['lookup_app']]]) {
     for (const name of names) {
         if (typeof type.prototype[name] !== 'function') throw new Error(`Missing application method ${name}`);
     }
@@ -98,3 +99,36 @@ for (const value of [Shell.ActionMode.POPUP, Clutter.ActorAlign.CENTER,
     Clutter.ModifierType.SUPER_MASK, Clutter.ModifierType.MOD1_MASK, Clutter.KEY_0, Clutter.KEY_KP_0])
     if (!Number.isInteger(value)) throw new Error('Missing numbered selection constant');
 print('Numbered selection input and overlay API contract OK.');
+
+void Meta.WindowActor.prototype;
+for (const signal of ['first-frame', 'destroy', 'child-added'])
+    if (!GObject.signal_lookup(signal, Meta.WindowActor.$gtype))
+        throw new Error(`Missing window actor signal ${signal}`);
+const actorProperties = GObject.Object.list_properties.call(Meta.WindowActor).map(p => p.name);
+for (const name of ['mapped', 'allocation', 'child-transform'])
+    if (!actorProperties.includes(name)) throw new Error(`Missing window actor property ${name}`);
+void Shell.WM.prototype;
+if (!GObject.signal_lookup('map', Shell.WM.$gtype)) throw new Error('Missing Shell.WM::map');
+print('Opening focus border actor/map signals OK.');
+
+for (const method of ['add_effect_with_name', 'remove_effect', 'get_paint_volume', 'get_resource_scale', 'get_paint_opacity', 'invalidate_paint_volume'])
+    if (typeof Meta.WindowActor.prototype[method] !== 'function') throw new Error(`Missing rounding API ${method}`);
+void Meta.WindowActor.prototype;
+if (!GObject.signal_lookup('resource-scale-changed', Meta.WindowActor.$gtype))
+    throw new Error('Missing actor resource-scale-changed');
+for (const method of ['get_target_size', 'get_actor', 'set_uniform_float'])
+    if (typeof Clutter.ShaderEffect.prototype[method] !== 'function') throw new Error(`Missing shader API ${method}`);
+const {CornerEffect} = await import('../src/cornerEffect.js');
+const cornerEffect = new CornerEffect();
+cornerEffect.update({bounds: [10, 15, 700, 500], radius: 8});
+const snippet = cornerEffect.vfunc_get_static_snippet();
+if (!snippet) throw new Error('Corner effect snippet missing');
+const shadowVolume = {origin: {x: 0, y: 0, z: 0}, width: 700, height: 500,
+    get_origin() { return this.origin; }, get_width() { return this.width; }, get_height() { return this.height; },
+    set_origin(origin) { this.origin = origin; }, set_width(width) { this.width = width; }, set_height(height) { this.height = height; }};
+cornerEffect.vfunc_modify_paint_volume(shadowVolume);
+if (shadowVolume.origin.x !== -10 || shadowVolume.origin.y !== -5 || shadowVolume.width !== 740 || shadowVolume.height !== 540)
+    throw new Error('Rounded shadow paint volume did not expand correctly');
+for (const method of ['get_origin', 'get_width', 'get_height', 'set_origin', 'set_width', 'set_height'])
+    if (typeof Clutter.PaintVolume.prototype[method] !== 'function') throw new Error(`Missing paint volume API ${method}`);
+print('Rounded corner native GObject class, Cogl snippet, uniforms and actor contracts OK (no compositor).');

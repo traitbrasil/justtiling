@@ -6,6 +6,7 @@ import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js';
+import {SYSTEM_SCHEMAS} from './shortcutOverrides.js';
 import {Connections} from './resources.js';
 import {clampRect, frameLimits, plainRect} from './geometry.js';
 import {applicationIdentities, canonicalAppExceptions} from './rules.js';
@@ -31,10 +32,18 @@ export class ShellAdapter {
 
     conflicts() {
         return Main.extensionManager.getUuids().filter(uuid => {
-            if (!/^(justtiling@dudu\.local$|o-tiling@|pop-shell@|forge@|smarttiling@|tilingshell@|tiling-assistant@|paperwm@|material-shell@)/i.test(uuid))
+            if (!/^(justtiling@dudu\.local$|just@trait\.com\.br$|o-tiling@|pop-shell@|forge@|smarttiling@|tilingshell@|tiling-assistant@|paperwm@|material-shell@)/i.test(uuid))
                 return false;
             const state = Main.extensionManager.lookup(uuid)?.state;
             return [ExtensionState.ACTIVE, ExtensionState.ACTIVATING].includes(state);
+        });
+    }
+
+    conflictDetails() {
+        return this.conflicts().sort().map(uuid => {
+            const name = Main.extensionManager.lookup(uuid)?.metadata?.name;
+            return {uuid, name: typeof name === 'string' && name.trim() ?
+                name.replace(/\s+/g, ' ').trim().slice(0, 160) : uuid};
         });
     }
 
@@ -48,6 +57,9 @@ export class ShellAdapter {
             this.watch(win);
             this.emit('changed');
         });
+        // Meta focus/mapped notifications may precede actor creation. Shell's
+        // map signal supplies the point at which a native actor is available.
+        on(global.window_manager, 'map', () => this.emit('changed'));
         on(global.display, 'notify::focus-window', () =>
             this.emit('focus', global.display.focus_window?.get_stable_sequence()));
         on(global.display, 'grab-op-begin', (_display, win, op) =>
@@ -213,6 +225,23 @@ export class ShellAdapter {
         };
     }
 
+    focusBorderData() { return this.decorationData(this.focusedId()); }
+
+    decorationData(id) {
+        const win = this.windows.get(id)?.win;
+        if (!win) return null;
+        const type = win.get_window_type();
+        return {
+            ...this.windowVisual(id), alive: true, mapped: win.mapped,
+            appWindow: [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG,
+                Meta.WindowType.MODAL_DIALOG, Meta.WindowType.UTILITY].includes(type),
+            inScope: win.is_on_all_workspaces() ||
+                win.get_workspace() === global.workspace_manager.get_active_workspace(),
+            overrideRedirect: win.is_override_redirect(), minimized: win.minimized,
+            fullscreen: win.is_fullscreen(), maximized: win.get_maximize_flags() !== 0,
+        };
+    }
+
     focusedVisual() { return this.windowVisual(this.focusedId()); }
 
     windowVisual(id) {
@@ -230,8 +259,7 @@ export class ShellAdapter {
         if (!this.shortcutSettings) {
             this.shortcutSettings = [];
             const source = Gio.SettingsSchemaSource.get_default();
-            for (const name of ['org.gnome.desktop.wm.keybindings', 'org.gnome.shell.keybindings',
-                'org.gnome.mutter.keybindings', 'org.gnome.mutter.wayland.keybindings']) {
+            for (const name of SYSTEM_SCHEMAS) {
                 const schema = source.lookup(name, true);
                 if (!schema) continue;
                 const settings = new Gio.Settings({settings_schema: schema});

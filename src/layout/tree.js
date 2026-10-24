@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Pure layout code: no GJS, compositor or filesystem dependencies.
 export function ids(tree) {
-    if (!tree)
+    if (!tree || tree.empty)
         return [];
     return 'id' in tree ? [tree.id] : [...ids(tree.a), ...ids(tree.b)];
 }
 
 export function remove(tree, id) {
-    if (!tree || 'id' in tree)
+    if (!tree || tree.empty || 'id' in tree)
         return tree?.id === id ? null : tree;
     const a = remove(tree.a, id);
     const b = remove(tree.b, id);
@@ -16,6 +16,7 @@ export function remove(tree, id) {
 }
 
 function replace(tree, id, next) {
+    if (tree.empty) return tree;
     if ('id' in tree)
         return tree.id === id ? next : tree;
     return {...tree, a: replace(tree.a, id, next), b: replace(tree.b, id, next)};
@@ -48,6 +49,11 @@ export function solve(tree, area, specs, {inner = 8, outer = 8} = {}) {
     const bounds = new Map();
     const seen = new Set();
     function measure(node) {
+        if (node.empty) {
+            const min = {width: 0, height: 0};
+            minima.set(node, min);
+            return min;
+        }
         if ('id' in node) {
             if (seen.has(node.id))
                 throw new Error('Duplicate window ID');
@@ -74,6 +80,7 @@ export function solve(tree, area, specs, {inner = 8, outer = 8} = {}) {
     }
     function place(node, r) {
         bounds.set(node, r);
+        if (node.empty) return true;
         const min = minima.get(node);
         if (r.width < min.width || r.height < min.height)
             return false;
@@ -179,7 +186,7 @@ export function insert(tree, id, specs, area, gaps, preferredId = null, side = '
 // Persist the solved divisions, not the temporary application minima. Later
 // solves, mouse resizing and swaps continue to use the real constraints.
 function freezeRatios(node, plan) {
-    if ('id' in node) return node;
+    if (node.empty || 'id' in node) return node;
     const dim = node.axis === 'x' ? 'width' : 'height';
     const a = plan.bounds.get(node.a)[dim], b = plan.bounds.get(node.b)[dim];
     return {...node, ratio: a / (a + b),

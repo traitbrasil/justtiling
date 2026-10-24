@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Gettext from 'gettext';
 export class Extension {
     constructor() {
-        this.uuid = 'just@trait.com.br';
+        this.uuid = 'justtiling@trait.com.br';
         Gettext.bindtextdomain('trait-justtiling', GLib.getenv('TRAIT_TEST_LOCALEDIR'));
     }
     openPreferences() { this.preferencesOpened = (this.preferencesOpened ?? 0) + 1; }

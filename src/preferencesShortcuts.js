@@ -7,11 +7,11 @@ import Gtk from 'gi://Gtk?version=4.0';
 import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
 import {canonicalAccelerator, SHORTCUT_TITLES, canOverride} from './keybindings.js';
+import {SYSTEM_SCHEMAS} from './shortcutOverrides.js';
 import {Connections} from './resources.js';
 
 const titles = SHORTCUT_TITLES;
-const schemaNames = ['org.gnome.desktop.wm.keybindings', 'org.gnome.shell.keybindings',
-    'org.gnome.mutter.keybindings', 'org.gnome.mutter.wayland.keybindings'];
+const schemaNames = SYSTEM_SCHEMAS;
 
 function systemSources() {
     const source = Gio.SettingsSchemaSource.get_default();
