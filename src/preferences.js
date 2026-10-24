@@ -9,7 +9,7 @@ import {shortcutPreferences} from './preferencesShortcuts.js';
 import {readLearning, writeLearning} from './learning.js';
 import {Connections} from './resources.js';
 
-export function buildPreferences(window, settings) {
+export function buildPreferences(window, settings, metadata = {}) {
     window.title = 'Trait JustTiling';
     const signals = new Connections();
     const bindings = [];
@@ -63,14 +63,17 @@ export function buildPreferences(window, settings) {
     const forgetAllRow = new Adw.ActionRow({title: _("Clear all learned layouts")});
     forgetAllRow.add_suffix(forgetAll); forgetAllRow.activatable_widget = forgetAll;
     learning.add(forgetAllRow);
+    const learnedList = new Adw.ExpanderRow({title: _("Learned applications"), expanded: false});
+    learning.add(learnedList);
     let learnedRows = [], forgetButtons = [];
     const learnedSignals = new Connections();
     const refreshLearning = () => {
         learnedSignals.clear();
-        for (const row of learnedRows) learning.remove(row);
+        for (const row of learnedRows) learnedList.remove(row);
         learnedRows = []; forgetButtons = [];
         const apps = readLearning(settings.get_string('learned-layouts'));
         forgetAll.sensitive = Object.keys(apps).length > 0;
+        learnedList.subtitle = format(_("Applications: %s"), Object.keys(apps).length);
         for (const [key, frame] of Object.entries(apps).sort(([a], [b]) => a.localeCompare(b))) {
             const percent = value => Math.round(value * 100);
             const row = new Adw.ActionRow({title: key.slice(key.indexOf(':') + 1), use_markup: false,
@@ -82,12 +85,12 @@ export function buildPreferences(window, settings) {
                 delete current[key];
                 settings.set_string('learned-layouts', writeLearning(current));
             });
-            learning.add(row); learnedRows.push(row); forgetButtons.push(button);
+            learnedList.add_row(row); learnedRows.push(row); forgetButtons.push(button);
         }
         if (!learnedRows.length) {
             const row = new Adw.ActionRow({title: _("No learned applications"),
                 subtitle: _("Rearrange windows manually to save your preferences.")});
-            learning.add(row); learnedRows.push(row);
+            learnedList.add_row(row); learnedRows.push(row);
         }
     };
     signals.add(settings, 'changed::learned-layouts', refreshLearning);
@@ -115,14 +118,17 @@ export function buildPreferences(window, settings) {
     gaps.add(resetRow); page.add(gaps);
     const exceptions = new Adw.PreferencesGroup({title: _("Always-floating applications"),
         description: _("To add an application, select one of its windows and enable “Always float this application” in the panel menu.")});
+    const exceptionList = new Adw.ExpanderRow({title: _("Application list"), expanded: false});
+    exceptions.add(exceptionList);
     let rows = [];
     let removeButtons = [];
     const rowSignals = new Connections();
     const refresh = () => {
         rowSignals.clear();
-        for (const row of rows) exceptions.remove(row);
+        for (const row of rows) exceptionList.remove(row);
         rows = []; removeButtons = [];
         const rules = settings.get_strv('floating-apps');
+        exceptionList.subtitle = format(_("Applications: %s"), rules.length);
         for (const rule of rules) {
             const colon = rule.indexOf(':');
             const name = colon >= 0 ? rule.slice(colon + 1) : rule;
@@ -136,12 +142,12 @@ export function buildPreferences(window, settings) {
                 // Always read the latest list: preserve changes made from the panel.
                 settings.set_strv('floating-apps', settings.get_strv('floating-apps').filter(item => item !== rule));
             });
-            exceptions.add(row); rows.push(row); removeButtons.push(button);
+            exceptionList.add_row(row); rows.push(row); removeButtons.push(button);
         }
         if (!rows.length) {
             const row = new Adw.ActionRow({title: _("No application exceptions"),
                 subtitle: _("Automatic per-window exceptions are not shown in this list.")});
-            exceptions.add(row); rows.push(row);
+            exceptionList.add_row(row); rows.push(row);
         }
     };
     signals.add(settings, 'changed::floating-apps', refresh);
@@ -159,6 +165,9 @@ export function buildPreferences(window, settings) {
     const aboutPage = new Adw.PreferencesPage({title: _("About"), icon_name: 'help-about-symbolic'});
     const aboutGroup = new Adw.PreferencesGroup({title: 'Trait JustTiling',
         description: _("Automatic window tiling for GNOME.")});
+    const versionRow = new Adw.ActionRow({title: _("Version"),
+        subtitle: String(metadata['version-name'] ?? metadata.version ?? '—'), use_markup: false});
+    aboutGroup.add(versionRow);
     const developerRow = new Adw.ActionRow({title: 'Dudu Broering', subtitle: _("Developer")});
     const developerLink = new Gtk.LinkButton({label: 'trait.li/dudu', uri: 'https://trait.li/dudu?utm_source=trait_justtiling&utm_medium=extension&utm_campaign=sobre',
         valign: Gtk.Align.CENTER});
@@ -181,7 +190,7 @@ export function buildPreferences(window, settings) {
     aboutPage.add(aboutGroup);
     window.add(aboutPage);
     return {controls, reset, page, shortcuts, dispose,
-        learning: {forgetAll, get rows() { return learnedRows; }, get forgetButtons() { return forgetButtons; }},
-        about: {page: aboutPage, group: aboutGroup, developerRow, developerLink, projectRow, projectLink, contactRow, contactLink}, get disposed() { return disposed; },
-        get exceptionRows() { return rows; }, get removeButtons() { return removeButtons; }};
+        learning: {forgetAll, expander: learnedList, get rows() { return learnedRows; }, get forgetButtons() { return forgetButtons; }},
+        about: {page: aboutPage, group: aboutGroup, versionRow, developerRow, developerLink, projectRow, projectLink, contactRow, contactLink}, get disposed() { return disposed; },
+        exceptionExpander: exceptionList, get exceptionRows() { return rows; }, get removeButtons() { return removeButtons; }};
 }

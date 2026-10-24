@@ -115,7 +115,17 @@ export class Controller {
             return;
         } else if (kind === 'geometry') {
             if (this.resize || this.drag) return;
-            if (r?.state !== 'tiled') return;
+            if (r?.state !== 'tiled') {
+                // A late compositor actor/frame can become ready through geometry
+                // alone. Retry timed-out readiness, never explicit floating choices.
+                if (r?.state === 'floating' && r.override !== 'floating') {
+                    const data = this.adapter.read(id);
+                    if ((r.reason === 'not-ready' && data?.ready) ||
+                        (r.reason === 'user-maximized' && data && !data.maximized))
+                        this.schedule(30);
+                }
+                return;
+            }
             this.schedule(SETTLE_MS);
             return;
         }
@@ -218,7 +228,8 @@ export class Controller {
         r.state = 'floating';
         r.reason = reason;
         r.wantsAbove = true;
-        this.adapter.log('info', `Floating ${r.id}: ${reason}`);
+        const warning = ['not-ready', 'prepare-timeout', 'resize-not-converged'].includes(reason);
+        this.adapter.log(warning ? 'warn' : 'info', `Floating ${r.id}: ${reason}`);
     }
 
     syncAbove(r, data, paused) {
@@ -295,6 +306,46 @@ export class Controller {
         this.queueLearning([id, target]);
         for (const key of ids(next)) this.records.get(key).request = null;
         this.schedule(0);
+    }
+
+    numberedSwapContext() {
+        if (!this.running || this.suspended || this.resize || this.drag ||
+            this.adapter.monitorCount() !== 1 || !this.adapter.targetActive() ||
+            this.adapter.activeWorkspace?.() !== this.domain) return null;
+        const id = this.adapter.focusedId?.();
+        if (this.records.get(id)?.state !== 'tiled') return null;
+        const frames = new Map(ids(this.tree).map(key => [key, this.adapter.read(key)?.rect]));
+        const context = beginDrag(this.tree, id, frames, this.adapter.area(), this.layoutSpecs(), this.gaps);
+        if (!context) return null;
+        const targets = [...context.plan.frames].filter(([key]) => key !== id)
+            .sort(([a, ar], [b, br]) => ar.y - br.y || ar.x - br.x || a - b).map(([key]) => key);
+        return {...context, domain: this.domain, rules: [...this.floatingApps], targets};
+    }
+
+    validNumberedSwap(context) {
+        const focus = this.adapter.focusedId?.();
+        return !!context && this.running && !this.suspended && !this.resize && !this.drag &&
+            this.adapter.targetActive() && this.adapter.activeWorkspace?.() === context.domain &&
+            (focus === null || focus === undefined || focus === context.id) &&
+            this.validLayoutContext(context) && [...context.plan.frames].every(([id, frame]) =>
+                sameRect(this.adapter.read(id)?.rect, frame, 1));
+    }
+
+    selectNumberedSwap(context, number) {
+        if (!this.validNumberedSwap(context) || !Number.isInteger(number) ||
+            number < 1 || number > context.targets.length) return false;
+        const target = context.targets[number - 1];
+        const next = swapTiles(this.tree, context.id, target, context.area, context.specs, context.gaps);
+        if (!next) {
+            this.adapter.notice(N_("The two windows do not fit in their destination positions."));
+            return false;
+        }
+        this.tree = next;
+        this.queueLearning([context.id, target]);
+        for (const id of ids(next)) this.records.get(id).request = null;
+        this.schedule(0);
+        this.adapter.focusWindow(context.id);
+        return true;
     }
 
     learningWindows(extra = null) {
@@ -473,6 +524,15 @@ export class Controller {
         }
     }
 
+    previewDrag(point) {
+        const context = this.drag;
+        if (!this.running || this.suspended || !context || !this.dragSwap) return null;
+        if (this.adapter.activeWorkspace && this.adapter.activeWorkspace() !== context.domain) return null;
+        if (!this.validLayoutContext(context)) return null;
+        const result = finishDrag(context, this.adapter.read(context.id)?.rect, point);
+        return result && result.target !== context.id ? result.target : null;
+    }
+
     endDrag() {
         const context = this.drag;
         if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
@@ -480,7 +540,7 @@ export class Controller {
             this.cancelDrag('drag-context-changed');
             return;
         }
-        // Read the pointer once at release; no motion hooks, polling or native grabs.
+        // Sample again at release: the visual preview is advisory and may be stale.
         let point = null;
         try { point = this.adapter.pointer?.(); }
         catch (error) { this.adapter.log('warn', `Drop pointer unavailable: ${error}`); }
@@ -549,6 +609,7 @@ export class Controller {
         for (const r of this.records.values()) {
             const d = data.get(r.id);
             const reason = exclusion(d);
+            const maximizedEligible = d?.maximized && !exclusion({...d, resizable: true});
             if (!d?.alive) {
                 this.removeWindow(r.id);
                 this.records.delete(r.id);
@@ -578,12 +639,58 @@ export class Controller {
                 this.syncAbove(r, d, true);
                 continue;
             }
+            // Readiness timeout only ends polling. A later native event can
+            // admit the window through the normal rules/constraints again.
+            if (r.state === 'floating' && r.reason === 'not-ready' &&
+                r.override !== 'floating' && d.ready && (!reason || maximizedEligible)) {
+                this.release(r, true);
+                r.state = 'pending';
+                r.reason = null;
+                r.born = now;
+            }
+            // Only maximization of a managed tile creates this temporary exit.
+            // Do not restore its old snapshot: keep the newly restored geometry
+            // as the starting point for the next management interval.
+            if (r.state === 'floating' && r.reason === 'user-maximized' &&
+                !d.maximized && d.ready && !reason && r.override !== 'floating' &&
+                !matchesApp(d, this.floatingApps)) {
+                this.release(r, false);
+                r.state = 'pending';
+                r.reason = null;
+                r.wantsAbove = false;
+                r.born = now;
+            }
             // Features may still be unset at window-created. Do not permanently
             // classify a new normal window as fixed-size before it is mapped.
             if (r.state === 'pending' && d.inScope && d.normal &&
                 (!d.ready || now - r.born < 150)) {
                 if (now - r.born >= READY_MS) this.float(r, 'not-ready');
                 else this.schedule(100);
+                continue;
+            }
+            // Mutter reports fully maximized windows as non-resizable. Test
+            // eligibility without that temporary restriction before classifying
+            // an opening window as fixed-size; verify its real hints afterward.
+            if (r.state === 'tiled' && maximizedEligible) {
+                this.float(r, 'user-maximized', false);
+                continue;
+            }
+            if (r.state === 'preparing' && (!d.ready || d.maximized || now < r.prepareUntil)) {
+                if (now - r.born >= READY_MS)
+                    this.float(r, d.ready ? 'prepare-timeout' : 'not-ready');
+                else this.schedule(100);
+                continue;
+            }
+            if (r.state === 'pending' && maximizedEligible && r.override !== 'floating' &&
+                (r.override === 'tiled' || !matchesApp(d, this.floatingApps))) {
+                if (paused) continue;
+                this.capture(r);
+                r.touched = true;
+                r.state = 'preparing';
+                r.prepareUntil = now + SETTLE_MS;
+                r.born = now;
+                this.adapter.unmaximize(r.id);
+                this.schedule(100);
                 continue;
             }
             if (r.state === 'tiled' && d.fullscreen) continue;
@@ -645,15 +752,13 @@ export class Controller {
                 r.born = now;
                 this.schedule(150);
             }
-            if (r.state === 'tiled' && d.maximized) {
-                this.float(r, 'user-maximized', false);
-                continue;
-            }
             if (!['pending', 'preparing'].includes(r.state) || exclusion(d)) continue;
             if (r.state === 'pending' && now - r.born < 150) continue;
             if (!d.ready || (r.state === 'preparing' &&
                 (d.maximized || now < r.prepareUntil))) {
-                if (now - r.born >= READY_MS) this.float(r, 'not-ready');
+                // A refused unmaximize must not restart forever merely because
+                // the native window is mapped and otherwise ready.
+                if (now - r.born >= READY_MS) this.float(r, d.ready ? 'prepare-timeout' : 'not-ready');
                 else this.schedule(100);
                 continue;
             }
@@ -674,15 +779,6 @@ export class Controller {
             }
             next = this.learnedInsertion(next, r.id, specs, area, before);
             this.capture(r);
-            if (d.maximized) {
-                r.touched = true;
-                r.state = 'preparing';
-                r.prepareUntil = now + SETTLE_MS;
-                r.born = now;
-                this.adapter.unmaximize(r.id);
-                this.schedule(100);
-                continue;
-            }
             if (r.state === 'preparing') r.snapshot.rect = {...d.rect};
             this.learningPending = null;
             this.tree = next;

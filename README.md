@@ -20,7 +20,7 @@
 
 Trait JustTiling arranges your windows as you open and close them, giving each workspace its own layout. Adjust a split, swap two windows, or keep an application floating. Your desktop stays yours to shape.
 
-**Current version: 0.17.0.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
+**Current version: 0.19.2.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
 
 ## Make room for the way you work
 
@@ -32,6 +32,7 @@ Trait JustTiling arranges your windows as you open and close them, giving each w
 - **Keep your main window comfortable.** Preserve the focused window's size when adding another window, whenever space allows.
 - **Remember your adjustments.** Local layout learning uses successful manual resizing and swaps to guide future application positions and sizes.
 - **Let floating windows float.** Incompatible windows stay floating. Application exceptions keep tools you choose outside the tiling layout.
+- **Preview your swap.** A translucent GNOME-accent overlay marks a compatible destination while you drag.
 - **See your focus.** An optional border follows the GNOME accent color.
 - **Make it feel right.** Adjust gaps, insertion side, mouse behavior, and shortcuts through native Preferences.
 
@@ -62,11 +63,12 @@ Open a few windows to start tiling. Use the panel menu to change behavior or acc
 | Default shortcut | Action |
 | --- | --- |
 | **Super + T** | Turn automatic tiling on or off |
-| **Super + F** | Toggle the active window between tiled and floating |
-| **Super + C** | Cycle focus through tiled windows |
+| **Super + O** | Toggle the active window between tiled and floating |
+| **Super + F** | Cycle focus through tiled windows |
+| **Super + C** | Swap with a numbered window; Esc or the shortcut again cancels |
 | **Super + ← / → / ↑ / ↓** | Swap the active tile with its neighbor |
 
-All seven actions are configurable. The default Super+Arrow shortcuts temporarily replace conflicting GNOME shortcuts while tiling is active, and restore them when management stops. [Shortcuts and behavior →](docs/user-guide.md)
+All eight actions are configurable. The default Super+Arrow shortcuts temporarily replace conflicting GNOME shortcuts while tiling is active, and restore them when management stops. [Shortcuts and behavior →](docs/user-guide.md)
 
 ## Built for a focused setup
 

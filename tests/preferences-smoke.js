@@ -16,8 +16,10 @@ function flush() {
 }
 const settings = new Gio.Settings({schema_id: 'org.gnome.shell.extensions.justtiling'});
 const window = new Adw.PreferencesWindow();
-const ui = buildPreferences(window, settings);
+const ui = buildPreferences(window, settings, {'version-name': '9.8.7', version: 99});
 const english = GLib.getenv('LANGUAGE') === 'en';
+assert(ui.about.versionRow.title === (english ? 'Version' : 'Versão') && ui.about.versionRow.subtitle === '9.8.7',
+    'About must display the metadata version-name rather than the store revision');
 assert(ui.controls['tiling-enabled'].title === (english ? 'Tile windows automatically' : 'Organizar janelas automaticamente'), 'Session language applies to preferences');
 assert(window.title === 'Trait JustTiling' && ui.page.title === 'Trait JustTiling', 'Updated extension branding');
 assert(ui.about.page.title === (english ? 'About' : 'Sobre') && ui.about.developerRow.title === 'Dudu Broering', 'About page credits');
@@ -31,13 +33,25 @@ assert(ui.about.contactLink.label === 'just@trait.com.br' &&
     ui.about.contactLink.uri === 'mailto:just@trait.com.br', 'Public contact email');
 assert(ui.controls['learn-layouts'].active && !ui.learning.forgetAll.sensitive,
     'Learning defaults on with an empty list');
+assert(!ui.learning.expander.expanded && !ui.exceptionExpander.expanded,
+    'Long application lists must start collapsed');
+assert(ui.learning.expander.title === (english ? 'Learned applications' : 'Aplicativos com aprendizado') &&
+    ui.exceptionExpander.title === (english ? 'Application list' : 'Lista de aplicativos'),
+    'Collapsible list titles must follow the session language');
 const learned = {'app-id:Example.desktop': {x: 0, y: 0, width: 0.5, height: 1},
     'wm-class:<b>Other</b>': {x: 0.5, y: 0, width: 0.5, height: 1}};
 settings.set_string('learned-layouts', JSON.stringify({version: 1, apps: learned}));
 assert(ui.learning.forgetButtons.length === 2 && ui.learning.forgetAll.sensitive, 'Learned apps must refresh live');
+assert(!ui.learning.expander.expanded &&
+    ui.learning.expander.subtitle === (english ? 'Applications: 2' : 'Aplicativos: 2'),
+    'New learning must update the count without expanding the list');
+ui.learning.expander.expanded = true;
+
 assert(ui.learning.rows[1].title === '<b>Other</b>' && !ui.learning.rows[1].use_markup, 'Learned identifiers are literal');
 ui.learning.forgetButtons[0].emit('clicked');
 assert(Object.keys(JSON.parse(settings.get_string('learned-layouts')).apps).length === 1, 'Forget one keeps other app');
+assert(ui.learning.expander.expanded && ui.learning.expander.subtitle.endsWith('1'),
+    'Forgetting one profile must preserve expansion and update the count');
 ui.learning.forgetAll.emit('clicked');
 assert(Object.keys(JSON.parse(settings.get_string('learned-layouts')).apps).length === 0 &&
     !ui.learning.forgetAll.sensitive, 'Forget all clears local learning');
@@ -51,9 +65,14 @@ assert(defaults.includes('app-id:discord.desktop') && defaults.includes('app-id:
     defaults.includes('sandbox-id:io.github.kolunmi.Bazaar') &&
     defaults.includes('app-id:overgrive.desktop'), 'Current application rules and new overGrive default must be preserved');
 assert(ui.removeButtons.length === 30, 'Packaged exceptions must be editable in Preferences');
+assert(!ui.exceptionExpander.expanded && ui.exceptionExpander.subtitle.endsWith('30'),
+    'Default exceptions must remain collapsed with a live count');
+ui.exceptionExpander.expanded = true;
 ui.removeButtons[0].emit('clicked');
 assert(!settings.get_strv('floating-apps').includes(defaults[0]) && settings.get_strv('floating-apps').length === 29,
     'A packaged default must remain individually removable');
+assert(ui.exceptionExpander.expanded && ui.exceptionExpander.subtitle.endsWith('29'),
+    'Removing a rule must preserve expansion and update the count');
 settings.set_strv('floating-apps', []);
 assert(settings.get_strv('floating-apps').length === 0, 'Explicit empty list must override defaults');
 settings.set_strv('floating-apps', ['wm-class:CustomOnly']);
@@ -104,9 +123,10 @@ assert(settings.get_strv('floating-apps')[0] === 'wm-class:Keep' &&
 // Exercise the real key controller signal path and buttons; no physical key injection.
 window.present(); flush();
 const shortcuts = ui.shortcuts;
-for (const key of ['cycle-focus', 'swap-left', 'swap-right', 'swap-up', 'swap-down'])
+for (const key of ['swap-select', 'cycle-focus', 'swap-left', 'swap-right', 'swap-up', 'swap-down'])
     assert(shortcuts.rows[key] && shortcuts.editButtons[key] && shortcuts.resetButtons[key], 'Missing directional shortcut editor');
-assert(settings.get_strv('cycle-focus')[0] === '<Super>c', 'Focus shortcut defaults to Super+C');
+assert(settings.get_strv('cycle-focus')[0] === '<Super>f', 'Focus shortcut defaults to Super+F');
+assert(settings.get_strv('swap-select')[0] === '<Super>c', 'Number selection defaults to Super+C');
 shortcuts.editButtons['cycle-focus'].emit('clicked'); flush();
 let focusCapture = shortcuts.capture;
 focusCapture.controller.emit('key-pressed', Gdk.KEY_c, 0, Gdk.ModifierType.SUPER_MASK | Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK);
@@ -114,7 +134,7 @@ assert(focusCapture.save.sensitive, 'Focus shortcut should accept custom acceler
 focusCapture.save.emit('clicked'); flush();
 assert(settings.get_strv('cycle-focus')[0] === '<Control><Alt><Super>c', 'Focus shortcut saves custom accelerator');
 shortcuts.resetButtons['cycle-focus'].emit('clicked'); flush();
-assert(settings.get_strv('cycle-focus')[0] === '<Super>c', 'Focus shortcut reset');
+assert(settings.get_strv('cycle-focus')[0] === '<Super>f', 'Focus shortcut reset');
 const superMask = Gdk.ModifierType.SUPER_MASK;
 const press = (capture, key, mods = 0) => capture.controller.emit('key-pressed', key, 0, mods);
 shortcuts.editButtons['swap-left'].emit('clicked'); flush();
@@ -157,7 +177,7 @@ press(capture, Gdk.KEY_BackSpace); capture.save.emit('clicked'); flush();
 assert(settings.get_strv('toggle-floating').length === 0 &&
     shortcuts.rows['toggle-floating'].subtitle === (english ? 'Disabled' : 'Desativado'), 'Backspace must disable only the chosen action');
 shortcuts.resetButtons['toggle-floating'].emit('clicked');
-assert(settings.get_strv('toggle-floating')[0] === '<Super>f', 'Per-action reset must restore its schema default');
+assert(settings.get_strv('toggle-floating')[0] === '<Super>o', 'Per-action reset must restore its schema default');
 assert(settings.get_strv('toggle-tiling')[0] === '<Super>q', 'Per-action reset modified another action');
 settings.set_strv('toggle-tiling', ['<Super>x']);
 assert(shortcuts.rows['toggle-tiling'].subtitle.toLowerCase().includes('x'), 'External shortcut edit must refresh row');
@@ -175,7 +195,10 @@ assert(ui.controls['inner-gap'].value === oldValue, 'Settings binding survived c
 ui.dispose();
 for (let n = 0; n < 10; n++) {
     const next = new Adw.PreferencesWindow();
-    const form = buildPreferences(next, settings);
+    const form = buildPreferences(next, settings, {version: 42});
+    assert(form.about.versionRow.subtitle === '42', 'Numeric metadata version fallback');
+    assert(!form.learning.expander.expanded && !form.exceptionExpander.expanded,
+        'Reopening Preferences must collapse both lists again');
     assert(form.controls['inner-gap'].value === 18, 'Reopen did not load saved settings');
     form.dispose(); next.destroy();
 }

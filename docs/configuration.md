@@ -8,7 +8,7 @@ Open Preferences from the panel menu or run:
 gnome-extensions prefs just@trait.com.br
 ```
 
-Changes are saved automatically. They belong to the current desktop user.
+Changes are saved automatically. They belong to the current desktop user. The About page shows the installed extension version from its metadata, along with developer and project contacts.
 
 ## Defaults
 
@@ -25,6 +25,8 @@ Changes are saved automatically. They belong to the current desktop user.
 | Gap at work area edges | 15 | Layout units, adjustable from 0 to 64 |
 
 The gaps reset button restores only the two gaps. Shortcut actions have their own reset controls. Resetting those controls does not clear learned application layouts.
+
+Learned applications and always-floating application lists start collapsed to keep Preferences compact. Expand either list to manage its entries; the application count updates automatically. The learning switch and clear-all action remain visible.
 
 ## Application exceptions
 

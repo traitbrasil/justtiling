@@ -5,6 +5,7 @@ import GObject from 'gi://GObject';
 import Mtk from 'gi://Mtk';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
+import Clutter from 'gi://Clutter';
 import Graphene from 'gi://Graphene';
 
 const methods = {
@@ -86,3 +87,14 @@ for (const [type, names] of [[Shell.WindowTracker, ['get_window_app']],
 void Shell.WindowTracker.prototype;
 if (!GObject.signal_lookup('tracked-windows-changed', Shell.WindowTracker.$gtype))
     throw new Error('Missing WindowTracker::tracked-windows-changed');
+
+for (const [type, methods] of [[Clutter.Grab, ['is_revoked']],
+    [Clutter.Event, ['get_key_code', 'get_key_symbol', 'get_state']],
+    [St.Widget, ['add_child']], [St.Label, ['set_text']]]) {
+    for (const method of methods)
+        if (typeof type.prototype[method] !== 'function') throw new Error(`Missing selection API ${method}`);
+}
+for (const value of [Shell.ActionMode.POPUP, Clutter.ActorAlign.CENTER,
+    Clutter.ModifierType.SUPER_MASK, Clutter.ModifierType.MOD1_MASK, Clutter.KEY_0, Clutter.KEY_KP_0])
+    if (!Number.isInteger(value)) throw new Error('Missing numbered selection constant');
+print('Numbered selection input and overlay API contract OK.');

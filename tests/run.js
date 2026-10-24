@@ -1,3 +1,4 @@
+import {NumberChoice} from '../src/numberChoice.js';
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {ids, insert, remove, sameRect, solve} from '../src/layout/tree.js';
 import {ShortcutOverrides} from '../src/shortcutOverrides.js';
@@ -345,6 +346,115 @@ test('initial maximization is normalized and normal geometry/flags restore on st
     equal(a.read(1).rect, normalRect);
     equal(a.read(1).flags, 3);
 });
+test('opening maximized windows normalize before native resize eligibility is checked', () => {
+    for (const flags of [1, 2, 3]) {
+        const clock = new FakeClock(), a = new FakeAdapter(clock);
+        a.add(1, {maximized: true, flags});
+        const read = a.read.bind(a);
+        a.read = id => { const d = read(id); return d ? {...d, resizable: d.resizable && !d.maximized} : null; };
+        const c = new Controller(a, clock); c.start(); clock.run();
+        equal(c.records.get(1).state, 'tiled'); assert(!a.read(1).maximized);
+        equal(ids(c.tree), [1]); equal(clock.jobs.size, 0); c.stop();
+        equal(a.read(1).flags, flags);
+    }
+});
+test('late-ready maximized windows recover without becoming permanent fixed-size exceptions', () => {
+    const clock = new FakeClock(), a = new FakeAdapter(clock);
+    a.add(1, {ready: false, maximized: true, resizable: false, flags: 3});
+    const unmaximize = a.unmaximize.bind(a);
+    a.unmaximize = id => { unmaximize(id); a.windows.get(id).resizable = true; };
+    const c = new Controller(a, clock); c.start(); clock.run();
+    equal(c.records.get(1).reason, 'not-ready'); equal(clock.jobs.size, 0);
+    a.windows.get(1).ready = true; c.event({kind: 'geometry', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); assert(!a.read(1).maximized); c.stop();
+});
+test('opening maximized windows wait through fullscreen pauses before normalizing', () => {
+    const clock = new FakeClock(), a = new FakeAdapter(clock);
+    a.add(1, {maximized: true, resizable: false, flags: 3}); a.add(2, {fullscreen: true});
+    const unmaximize = a.unmaximize.bind(a);
+    let attempts = 0;
+    a.unmaximize = id => { attempts++; unmaximize(id); a.windows.get(id).resizable = true; };
+    const c = new Controller(a, clock); c.start(); clock.run();
+    equal(attempts, 0); equal(c.records.get(1).state, 'pending'); equal(clock.jobs.size, 0);
+    a.windows.get(2).fullscreen = false; c.event({kind: 'changed', id: 2}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); equal(attempts, 1); c.stop();
+});
+test('asynchronous unmaximizing during opening waits for native eligibility and converges', () => {
+    const clock = new FakeClock(), a = new FakeAdapter(clock);
+    a.add(1, {maximized: true, flags: 3, resizable: false});
+    let attempts = 0;
+    a.unmaximize = id => {
+        attempts++;
+        clock.after(250, () => {
+            Object.assign(a.windows.get(id), {maximized: false, flags: 0});
+            c.event({kind: 'changed', id});
+        });
+        clock.after(350, () => {
+            a.windows.get(id).resizable = true; c.event({kind: 'changed', id});
+        });
+    };
+    const c = new Controller(a, clock); c.start(); clock.run();
+    equal(c.records.get(1).state, 'tiled'); equal(attempts, 1); equal(clock.jobs.size, 0); c.stop();
+});
+test('maximized app exceptions and special windows are never normalized into tiling', () => {
+    for (const extra of [{appId: 'float.desktop'}, {transient: true}, {fullscreen: true},
+        {skipTaskbar: true}, {normal: false}, {inScope: false}, {minimized: true}]) {
+        const clock = new FakeClock(), a = new FakeAdapter(clock);
+        a.add(1, {maximized: true, resizable: false, flags: 3, ...extra});
+        let attempts = 0; a.unmaximize = () => attempts++;
+        const c = new Controller(a, clock); c.floatingApps = ['app-id:float.desktop']; c.start(); clock.run();
+        equal(attempts, 0); equal(ids(c.tree), []); assert(a.read(1).maximized); c.stop();
+    }
+});
+test('manual maximization of a settled tile floats without restoring or fighting the user', () => {
+    const {adapter: a, controller: c, clock} = setup([[1, {}], [2, {}]]);
+    const maximizedRect = {...AREA};
+    Object.assign(a.windows.get(1), {maximized: true, resizable: false, flags: 3, rect: maximizedRect});
+    let attempts = 0; a.unmaximize = () => attempts++;
+    const restored = a.restores.length;
+    c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).reason, 'user-maximized'); equal(ids(c.tree), [2]);
+    equal(a.read(1).rect, maximizedRect); equal(a.read(1).flags, 3);
+    equal(attempts, 0); equal(a.restores.length, restored);
+    c.event({kind: 'changed', id: 1}); clock.run(); equal(c.records.get(1).state, 'floating'); c.stop();
+});
+test('restoring a manually maximized tile automatically rejoins without restoring stale geometry', () => {
+    const {adapter: a, controller: c, clock} = setup([[1, {}], [2, {}]]);
+    Object.assign(a.windows.get(1), {maximized: true, resizable: false, flags: 3, rect: {...AREA}});
+    c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).reason, 'user-maximized');
+    const restores = a.restores.length;
+    Object.assign(a.windows.get(1), {maximized: false, resizable: true, flags: 0,
+        rect: {x: 80, y: 70, width: 700, height: 500}});
+    c.event({kind: 'geometry', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); equal(ids(c.tree).sort(), [1, 2]);
+    equal(a.restores.length, restores); assert(!a.read(1).above);
+    c.stop(); equal(a.read(1).flags, 0);
+});
+test('restoring maximization respects app rules, manual floating choices and constraints', () => {
+    for (const mode of ['application', 'manual', 'minimum', 'fixed']) {
+        const {adapter: a, controller: c, clock} = setup([[1, {appId: 'test.desktop'}], [2, {}]]);
+        Object.assign(a.windows.get(1), {maximized: true, resizable: false, flags: 3});
+        c.event({kind: 'changed', id: 1}); clock.run();
+        if (mode === 'application') c.floatingApps = ['app-id:test.desktop'];
+        if (mode === 'manual') c.records.get(1).override = 'floating';
+        Object.assign(a.windows.get(1), {maximized: false, flags: 0,
+            resizable: mode !== 'fixed', minWidth: mode === 'minimum' ? 9000 : 0});
+        c.event({kind: 'changed', id: 1}); clock.run();
+        equal(c.records.get(1).state, 'floating'); assert(!ids(c.tree).includes(1));
+        if (mode === 'minimum') equal(c.records.get(1).reason, 'insufficient-space');
+        equal(clock.jobs.size, 0); c.stop();
+    }
+});
+test('opening normalization rechecks real fixed-size and minimum-size constraints', () => {
+    for (const mode of ['fixed', 'minimum']) {
+        const clock = new FakeClock(), a = new FakeAdapter(clock);
+        a.add(1, {maximized: true, flags: 3, resizable: mode !== 'fixed', minWidth: mode === 'minimum' ? 9000 : 0});
+        const c = new Controller(a, clock); c.start(); clock.run();
+        equal(c.records.get(1).reason, mode === 'fixed' ? 'fixed-size' : 'insufficient-space');
+        equal(c.records.get(1).state, 'floating'); equal(ids(c.tree), []); equal(clock.jobs.size, 0); c.stop();
+    }
+});
 test('readiness is retried for a bounded time and can succeed late', () => {
     const clock = new FakeClock();
     const a = new FakeAdapter(clock);
@@ -359,6 +469,52 @@ test('readiness is retried for a bounded time and can succeed late', () => {
     equal(other.controller.records.get(2).reason, 'not-ready');
     equal(other.clock.jobs.size, 0);
     other.controller.stop();
+});
+test('a window that becomes ready after the startup deadline is reconsidered automatically', () => {
+    const {adapter: a, controller: c, clock} = setup([[1, {ready: false}]]);
+    equal(c.records.get(1).reason, 'not-ready');
+    equal(clock.jobs.size, 0);
+    a.windows.get(1).ready = true;
+    c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled');
+    c.stop();
+});
+test('late readiness through geometry respects app exceptions and manual floating', () => {
+    for (const mode of ['automatic', 'application', 'manual']) {
+        const {adapter: a, controller: c, clock} = setup([[1, {ready: false, appId: 'late.desktop'}]]);
+        if (mode === 'application') c.floatingApps = ['app-id:late.desktop'];
+        a.windows.get(1).ready = true;
+        if (mode === 'manual') {
+            c.toggleWindow(1); // Explicitly tile, then float before the pending pass.
+            c.toggleWindow(1);
+        }
+        c.event({kind: 'geometry', id: 1}); clock.run();
+        equal(c.records.get(1).state, mode === 'automatic' ? 'tiled' : 'floating');
+        if (mode === 'application') equal(c.records.get(1).reason, 'app-exception');
+        if (mode === 'manual') equal(c.records.get(1).reason, 'user-toggle');
+        c.stop();
+    }
+});
+test('late readiness still respects minimum sizes and ordinary floating fallbacks', () => {
+    const {adapter: a, controller: c, clock} = setup([[1, {ready: false}]]);
+    Object.assign(a.windows.get(1), {ready: true, minWidth: 9000});
+    c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).reason, 'insufficient-space');
+    a.windows.get(1).minWidth = 100;
+    c.event({kind: 'geometry', id: 1}); c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'floating');
+    equal(c.records.get(1).reason, 'insufficient-space');
+    c.stop();
+});
+test('unmaximize timeout does not restart when a mapped window emits another event', () => {
+    const clock = new FakeClock();
+    const a = new FakeAdapter(clock); a.add(1, {maximized: true, resizable: false, flags: 3});
+    let attempts = 0; a.unmaximize = () => { attempts++; };
+    const c = new Controller(a, clock); c.start(); clock.run();
+    equal(c.records.get(1).reason, 'prepare-timeout'); equal(attempts, 1);
+    c.event({kind: 'geometry', id: 1}); c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).reason, 'prepare-timeout'); equal(attempts, 1);
+    equal(clock.jobs.size, 0); c.stop();
 });
 test('features unset before mapping do not create a premature fixed-size exception', () => {
     const clock = new FakeClock();
@@ -744,11 +900,11 @@ test('duplicate own shortcuts and compositor refusal do not leak bindings', () =
 
 function migrationSettings(values = {}) {
     const saved = new Map(Object.entries(values));
-    const defaults = {'toggle-tiling': ['<Super>t'], 'toggle-floating': ['<Super>f']};
+    const defaults = {'toggle-tiling': ['<Super>t'], 'toggle-floating': ['<Super>o'], 'cycle-focus': ['<Super>f'], 'swap-select': ['<Super>c']};
     return {
         saved, get_int: key => saved.get(key) ?? 0, set_int: (key, value) => saved.set(key, value),
         get_user_value: key => saved.has(key) ? {} : null,
-        get_strv: key => saved.get(key) ?? defaults[key], set_strv: (key, value) => saved.set(key, value),
+        get_strv: key => saved.get(key) ?? defaults[key] ?? [], set_strv: (key, value) => saved.set(key, value),
     };
 }
 test('shortcut migration upgrades only known legacy overrides', () => {
@@ -756,8 +912,8 @@ test('shortcut migration upgrades only known legacy overrides', () => {
         'toggle-floating': ['<Super><Control><Alt>f']});
     migrateShortcuts(settings);
     equal(settings.get_strv('toggle-tiling'), ['<Super>t']);
-    equal(settings.get_strv('toggle-floating'), ['<Super>f']);
-    equal(settings.get_int('preferences-version'), 1);
+    equal(settings.get_strv('toggle-floating'), ['<Super>o']);
+    equal(settings.get_int('preferences-version'), 2);
 });
 test('shortcut migration preserves customized, empty and multiple accelerators', () => {
     for (const value of [[], ['<Super>g'], ['<Super><Control><Alt>f', '<Super>g']]) {
@@ -1062,6 +1218,38 @@ test('mouse drag freezes geometry until release then exchanges both tiles and re
     equal(ids(c.tree), [2, 1]); equal(a.read(1).rect, second); equal(a.read(2).rect, first);
     assert(!a.read(1).above); c.stop(); equal(a.read(1).rect.width, 700); equal(a.read(2).rect.width, 700);
 });
+test('drag preview selects only a valid destination without moving windows or learning', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
+    const tree = c.tree, moves = a.moves.length, learned = JSON.stringify(c.learnedLayouts);
+    const first = a.read(1).rect, second = a.read(2).rect;
+    beginMove(c);
+    equal(c.previewDrag(center(second)), null); // No movement yet.
+    a.windows.get(1).rect = translated(first);
+    equal(c.previewDrag(center(second)), 2);
+    equal(c.previewDrag(center(first)), null);
+    equal(c.previewDrag({x: 1, y: 1}), null);
+    equal(c.previewDrag(null), null);
+    assert(c.tree === tree); equal(a.moves.length, moves);
+    equal(JSON.stringify(c.learnedLayouts), learned); equal(c.learningPending, null);
+    equal(clock.jobs.size, 0); c.stop();
+    equal(c.previewDrag(center(second)), null);
+});
+test('drag preview rejects stale context, keyboard movement and disabled swaps', () => {
+    for (const mode of ['area', 'gaps', 'rules', 'hints', 'disabled', 'keyboard', 'workspace']) {
+        const {adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
+        const first = a.read(1).rect, second = a.read(2).rect;
+        if (mode === 'keyboard') c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: false}});
+        else beginMove(c);
+        a.windows.get(1).rect = translated(first);
+        if (mode === 'area') a.workarea.width -= 20;
+        if (mode === 'gaps') c.gaps = {...c.gaps, inner: 25};
+        if (mode === 'rules') c.floatingApps = ['app-id:other.desktop'];
+        if (mode === 'hints') a.windows.get(2).minWidth = 500;
+        if (mode === 'disabled') c.dragSwap = false;
+        if (mode === 'workspace') a.activeWorkspace = () => 'other';
+        equal(c.previewDrag(center(second)), null); c.stop();
+    }
+});
 test('mouse drop without target or with incompatible target floats only the dragged window', () => {
     for (const incompatible of [false, true]) {
         const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
@@ -1072,6 +1260,7 @@ test('mouse drop without target or with incompatible target floats only the drag
         beginMove(c); assert(c.drag);
         const manual = translated(a.read(1).rect); a.windows.get(1).rect = manual;
         a.point = incompatible ? center(a.read(2).rect) : {x: 1, y: 33};
+        equal(c.previewDrag(a.point), null);
         endMove(c); clock.run(); equal(c.records.get(1).state, 'floating');
         equal(a.read(1).rect, manual); equal(ids(c.tree), [2]);
         c.stop(); equal(a.read(1).rect, manual);
@@ -1656,6 +1845,59 @@ await asyncTest('disposed package resolver cannot emit changes after delayed com
     identity.get('/usr/bin/helper'); await Promise.resolve(); identity.dispose(); resolve('tool.desktop');
     for (let n = 0; n < 5; n++) await Promise.resolve();
     equal(changes, 0); equal(identity.cache.size, 0);
+});
+
+test('numbered swap is inert until selected and keeps source focus', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {}], [3, {}]]);
+    let focus = 1; a.focusedId = () => focus; a.focusWindow = id => focus = id;
+    a.activeWorkspace = () => c.domain;
+    const tree = c.tree, context = c.numberedSwapContext();
+    assert(context && context.targets.length === 2 && !context.targets.includes(1));
+    equal(c.tree, tree);
+    assert(!c.selectNumberedSwap(context, 0)); equal(c.tree, tree);
+    const target = context.targets[0], before = {...a.read(target).rect};
+    assert(c.selectNumberedSwap(context, 1)); clock.run();
+    equal(a.read(1).rect, before); equal(focus, 1);
+    assert(!c.selectNumberedSwap(context, 2), 'Old contexts cannot be reused'); c.stop();
+});
+test('numbered swap rejects stale focus, workspace, geometry and disabled context', () => {
+    for (const mode of ['focus', 'workspace', 'geometry', 'disabled', 'monitor', 'rule']) {
+        const {adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
+        a.focusedId = () => 1; a.focusWindow = () => {}; a.activeWorkspace = () => c.domain;
+        const context = c.numberedSwapContext(), tree = c.tree; assert(context);
+        if (mode === 'focus') a.focusedId = () => 2;
+        if (mode === 'workspace') a.activeWorkspace = () => 'other';
+        if (mode === 'geometry') a.windows.get(2).rect.x += 10;
+        if (mode === 'disabled') c.running = false;
+        if (mode === 'monitor') a.monitorCount = () => 2;
+        if (mode === 'rule') c.floatingApps = ['wm-class:Other'];
+        assert(!c.selectNumberedSwap(context, 1), mode); equal(c.tree, tree); c.stop();
+    }
+});
+test('number choices support single digits, keypad values and ambiguous multi-digit prefixes', () => {
+    equal(new NumberChoice(3).digit('2'), {number: 2, wait: false});
+    const choice = new NumberChoice(63);
+    equal(choice.digit('1'), {number: 1, wait: true});
+    equal(choice.digit('2'), {number: 12, wait: false});
+    equal(new NumberChoice(3).digit('9'), {number: null, wait: false});
+    equal(new NumberChoice(63).digit('0'), {number: null, wait: false});
+});
+test('shortcut migration upgrades the previous defaults and preserves custom focus', () => {
+    const settings = migrationSettings({'preferences-version': 1, 'toggle-floating': ['<Super>f'], 'cycle-focus': ['<Super>c']});
+    migrateShortcuts(settings);
+    equal(settings.get_strv('toggle-floating'), ['<Super>o']); equal(settings.get_strv('cycle-focus'), ['<Super>f']);
+    const custom = migrationSettings({'preferences-version': 1, 'cycle-focus': ['<Super>x']});
+    migrateShortcuts(custom); equal(custom.get_strv('cycle-focus'), ['<Super>x']);
+});
+
+test('migration gives custom bindings priority over new default shortcuts', () => {
+    const settings = migrationSettings({'preferences-version': 1,
+        'toggle-tiling': ['<Super>c'], 'toggle-floating': ['<Super>f'], 'cycle-focus': ['<Super>o']});
+    migrateShortcuts(settings);
+    equal(settings.get_strv('toggle-tiling'), ['<Super>c']);
+    equal(settings.get_strv('cycle-focus'), ['<Super>o']);
+    equal(settings.get_strv('swap-select'), []);
+    equal(settings.get_strv('toggle-floating'), []);
 });
 
 print(`\n${passed} tests passed. Pure GJS tests: no compositor, D-Bus session or window mutation.`);

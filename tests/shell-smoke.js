@@ -38,7 +38,7 @@ const windows = [];
 Object.assign(display, {list_all_windows: () => windows,
     get_n_monitors: () => monitors, focus_window: null});
 let pointer = {x: 0, y: 0}, pointerReads = 0;
-globalThis.global = {display, workspace_manager: manager, get_current_time: () => 1234,
+globalThis.global = {stage: {width: 1600, height: 932}, display, workspace_manager: manager, get_current_time: () => 1234,
     get_pointer: () => { pointerReads++; return [pointer.x, pointer.y, 0]; }};
 
 class WindowActor extends Signals {
@@ -84,7 +84,7 @@ class Window extends Signals {
     is_fullscreen() { return false; }
     get_maximize_flags() { return this.flags; }
     allows_move() { return true; }
-    allows_resize() { return true; }
+    allows_resize() { return this.flags !== Meta.MaximizeFlags.BOTH; }
     is_above() { return this.above; }
     unmaximize() { this.flags = 0; }
     set_maximize_flags(flags) { this.flags = flags; }
@@ -112,7 +112,7 @@ let ext = new JustTiling();
 ext.enable();
 await wait(500);
 assert(Main.wm.bindings.get('toggle-tiling').settings.get_strv('toggle-tiling')[0] === '<Super>t', 'Default tiling shortcut must be Super+T');
-assert(Main.wm.bindings.get('toggle-floating').settings.get_strv('toggle-floating')[0] === '<Super>f', 'Default floating shortcut must be Super+F');
+assert(Main.wm.bindings.get('toggle-floating').settings.get_strv('toggle-floating')[0] === '<Super>o', 'Default floating shortcut must be Super+O');
 assert(Main.panel.indicators.size === 1, 'Panel menu must be attached');
 assert(w1.frame.width === 1570, 'Adapter must tile first window');
 const firstMoves = w1.moves;
@@ -129,7 +129,7 @@ w3.emit('unmanaging'); windows.splice(windows.indexOf(w3), 1);
 await wait(200);
 assert(w3.handlers.size === 0, 'Destroyed window signals must be disconnected');
 assert(w1.frame.width === 1570, 'Closing must recover space');
-assert(Main.wm.bindings.size === 7, 'All seven keybindings should be registered');
+assert(Main.wm.bindings.size === 8, 'All eight keybindings should be registered');
 assert(JSON.stringify(nativeKeys.get_strv('unmaximize')) === JSON.stringify(['<Alt>F5']),
     'Override must remove only conflicting arrow and preserve other accelerators');
 ext.disable(); ext.disable();
@@ -274,7 +274,7 @@ w5.emit('position-changed'); display.emit('grab-op-end', w5, Meta.GrabOp.KEYBOAR
 await wait(500);
 assert(w1.frame.width === leftWidth + 60 && w5.frame.width === rightWidth - 60,
     'Keyboard resize enum lost its shared boundary');
-// Mouse moves swap only at release, using one global pointer sample.
+// Mouse moves preview compatible destinations; geometry only swaps on release.
 const swapItem = button.menu.items.find(item => item.label.text.startsWith(english ? 'Swap windows' : 'Trocar janelas'));
 assert(swapItem.state, 'Drag swap should default on');
 const beforeSwap1 = {...w1.frame}, beforeSwap5 = {...w5.frame};
@@ -283,13 +283,57 @@ const swapMoves1 = w1.moves, swapMoves5 = w5.moves, reads = pointerReads;
 display.emit('grab-op-begin', w1, Meta.GrabOp.MOVING);
 w1.frame = {...w1.frame, x: w1.frame.x + 100, y: w1.frame.y + 100};
 w1.emit('position-changed'); await wait(500);
-assert(w1.moves === swapMoves1 && w5.moves === swapMoves5 && pointerReads === reads,
-    'Native mouse drag must not poll or move other windows');
+assert(w1.moves === swapMoves1 && w5.moves === swapMoves5 && pointerReads > reads,
+    'Preview may sample the pointer but must not move windows during a native drag');
+const previews = () => [...borderWidgets].filter(widget => widget.name === 'justtiling-swap-preview');
+assert(previews().length === 1 && previews()[0].parent === w5.actor,
+    'Valid swap target must carry the preview');
+assert(previews()[0].opacity > 0 && previews()[0].opacity < 255 &&
+    previews()[0].style.includes('-st-accent-color') && !previews()[0].reactive && !previews()[0].can_focus,
+    'Preview must be translucent, accent-colored and non-interactive');
+assert(previews()[0].width === w5.frame.width && previews()[0].height === w5.frame.height,
+    'Preview must cover the receiving frame');
+pointer = {x: 1, y: 1}; await wait(80);
+assert(previews().length === 0, 'Leaving compatible tiles must remove the preview');
+pointer = {x: beforeSwap5.x + beforeSwap5.width / 2, y: beforeSwap5.y + 100}; await wait(80);
+assert(previews().length === 1, 'Pointer motion alone must restore the destination preview');
+Main.overview.visible = true; Main.overview.emit('showing');
+assert(previews().length === 0 && ext._preview.timer === null, 'Overview must remove preview and timer');
+Main.overview.visible = false; Main.overview.emit('hidden');
+assert(previews().length === 1, 'Leaving overview can restore an ongoing valid drag preview');
+Main.sessionMode.isLocked = true; Main.sessionMode.emit('updated');
+assert(previews().length === 0 && ext._preview.timer === null, 'Lock must remove preview and timer');
+Main.sessionMode.isLocked = false; Main.sessionMode.emit('updated');
+const releaseReads = pointerReads;
 display.emit('grab-op-end', w1, Meta.GrabOp.MOVING); await wait(500);
 assert(JSON.stringify(w1.frame) === JSON.stringify(beforeSwap5) &&
     JSON.stringify(w5.frame) === JSON.stringify(beforeSwap1) && !w1.above && !w5.above,
     'Native MOVING enum did not exchange the tiles');
-assert(pointerReads === reads + 1, 'Drop should sample the pointer exactly once');
+assert(pointerReads === releaseReads + 1, 'Drop must use a fresh pointer sample');
+assert(previews().length === 0 && ext._preview.timer === null, 'Drop must remove preview and timer');
+const stoppedPreviewReads = pointerReads; await wait(80);
+assert(pointerReads === stoppedPreviewReads, 'Preview polling must stop immediately after drop');
+// Native actor scale and shadows must not offset the target overlay.
+const targetBuffer = w5.get_buffer_rect;
+w5.get_buffer_rect = () => ({...w5.frame, x: w5.frame.x - 10, y: w5.frame.y - 15});
+w5.actor.childScale = 2;
+const previewCancelFrame = {...w1.frame};
+display.emit('grab-op-begin', w1, Meta.GrabOp.MOVING);
+w1.frame = {...w1.frame, x: w1.frame.x + 100, y: w1.frame.y + 100};
+pointer = {x: w5.frame.x + w5.frame.width / 2, y: w5.frame.y + 100};
+w1.emit('position-changed');
+assert(previews().length === 1 && previews()[0].x === 5 && previews()[0].y === 7.5 &&
+    previews()[0].scale_x === 0.5, 'Preview must compensate native buffer and child scale');
+const previewTargetActor = w5.actor;
+w5.actor = null; previewTargetActor.destroy();
+assert(previews().length === 0, 'Destroying the target actor must destroy its overlay');
+w5.actor = new WindowActor(); w5.emit('shown');
+assert(previews().length === 1, 'A recreated target actor must get a fresh valid preview');
+w1.frame = previewCancelFrame;
+display.emit('grab-op-end', w1, Meta.GrabOp.MOVING);
+assert(previews().length === 0 && ext._preview.timer === null, 'Cancelled drag must remove preview');
+w5.get_buffer_rect = targetBuffer; w5.actor.childScale = 1;
+await wait(100);
 // An Escape-like return to the original frame must not swap with the pointer target.
 const cancelFrame = {...w1.frame};
 display.emit('grab-op-begin', w1, Meta.GrabOp.MOVING_UNCONSTRAINED);
@@ -313,7 +357,7 @@ const focusPeer = new Window(21); windows.push(focusPeer); display.emit('window-
 display.focus_window = w1; display.emit('notify::focus-window');
 const focusMoves = w1.moves + focusPeer.moves, focusTree = ext._controller.tree;
 Main.wm.press('cycle-focus');
-assert(display.focus_window === focusPeer && focusPeer.activatedAt === 1234, 'Super+C should activate next tiled window');
+assert(display.focus_window === focusPeer && focusPeer.activatedAt === 1234, 'Super+F should activate next tiled window');
 Main.wm.press('cycle-focus');
 assert(display.focus_window === w1 && w1.moves + focusPeer.moves === focusMoves && ext._controller.tree === focusTree,
     'Focus cycling should wrap without geometry changes');
@@ -322,6 +366,35 @@ assert(Main.wm.bindings.get('cycle-focus').settings.get_strv('cycle-focus')[0] =
 settings.set_strv('cycle-focus', []);
 assert(!Main.wm.bindings.has('cycle-focus'), 'Focus shortcut should be disableable');
 settings.reset('cycle-focus');
+// Number selection captures input without moving anything until a valid choice.
+const numbered = () => [...borderWidgets].filter(widget => widget.name === 'justtiling-numbered-swap');
+const key = symbol => ({get_key_code: () => symbol, get_key_symbol: () => symbol, get_state: () => 0});
+const numberedTree = ext._controller.tree;
+Main.wm.press('swap-select');
+assert(Main.modalCount === 1 && numbered().length === 1, 'Numbered swap must grab keyboard and label the other tile');
+assert(w1.actor.children.size === 1 && numbered()[0].parent === focusPeer.actor,
+    'Only other tiled windows get numbered overlays');
+assert(ext._controller.tree === numberedTree && w1.moves + focusPeer.moves === focusMoves, 'Entering selection moved windows');
+ext._numberedSwap.key(key(65307));
+assert(Main.modalCount === 0 && numbered().length === 0 && ext._controller.tree === numberedTree, 'Escape must cancel cleanly');
+Main.wm.press('swap-select'); Main.wm.press('swap-select');
+assert(Main.modalCount === 0 && ext._controller.tree === numberedTree, 'Repeating shortcut must cancel');
+Main.setFailGrab(true); Main.wm.press('swap-select'); Main.setFailGrab(false);
+assert(Main.modalCount === 0 && numbered().length === 0, 'Failed keyboard grab must remove all UI');
+Main.wm.press('swap-select');
+ext._numberedSwap.key(key(57));
+assert(Main.modalCount === 1 && ext._controller.tree === numberedTree, 'Invalid number must not swap');
+ext._numberedSwap.key(key(49)); await wait(100);
+assert(Main.modalCount === 0 && numbered().length === 0 && ext._controller.tree !== numberedTree &&
+    display.focus_window === w1, 'Number 1 must swap and keep the source focused');
+Main.wm.press('swap-select'); Main.overview.visible = true; Main.overview.emit('showing');
+assert(Main.modalCount === 0 && numbered().length === 0, 'Overview must cancel numbered selection');
+Main.overview.visible = false;
+Main.wm.press('swap-select'); settings.set_int('inner-gap', 16); await wait(100);
+assert(Main.modalCount === 0 && numbered().length === 0, 'Preference changes must cancel numbered selection');
+settings.set_int('inner-gap', 15); await wait(100);
+Main.wm.press('swap-select'); ext._numberedSwap.cancel();
+assert(Main.modalCount === 0 && numbered().length === 0, 'Destroy must release keyboard and remove overlays');
 focusPeer.emit('unmanaging'); windows.splice(windows.indexOf(focusPeer), 1); await wait(200);
 
 // Directional shortcuts operate through the native binding callbacks and keep the active window.
@@ -561,7 +634,7 @@ assert(floatingItem.handlers.size === 0 && appRuleItem.handlers.size === 0, 'Men
 
 // A direct disable/enable cycle on the same extension instance must reclaim all bindings.
 ext.enable(); await wait(500);
-assert(Main.wm.bindings.size === 7, 'Reload while enabled lost directional keybindings');
+assert(Main.wm.bindings.size === 8, 'Reload while enabled lost directional keybindings');
 ext.disable();
 assert(nativeKeys.get_strv('unmaximize').includes('<Super>Down'), 'Reload cleanup lost native arrows');
 Main.panel.fail = true;
@@ -573,4 +646,93 @@ assert(Main.wm.bindings.size === 0 && display.handlers.size === 0 && Main.panel.
     'Partial panel failure leaked extension resources');
 Main.panel.fail = false;
 ext.disable();
-print('Shell adapter smoke OK: lifecycle, workspaces, settings, shortcut migration, conflicts, native-menu doubles, shared-border resizing, native drag swapping, optional focus border doubles and cleanup.');
+// Cold-start readiness can exceed the bounded polling window. A later
+// native geometry event must recover without a shortcut or a Shell reload.
+windows.splice(0, windows.length, new Window(90));
+const late = windows[0]; late.mapped = false;
+display.focus_window = late;
+ext = new JustTiling(); ext.enable(); await wait(2300);
+assert(late.moves === 0, 'A window still mapping must not be tiled');
+late.mapped = true;
+late.emit('size-changed'); await wait(600);
+assert(late.moves > 0 && late.frame.width === 1570,
+    'A late ready window must recover on native geometry without Super+F');
+ext.disable();
+assert(late.handlers.size === 0 && Main.wm.bindings.size === 0,
+    'Late-readiness recovery leaked native observers or shortcuts');
+// Disable during an active preview must cancel polling synchronously.
+const latePeer = new Window(91); windows.push(latePeer);
+ext = new JustTiling(); ext.enable(); await wait(500);
+const peerFrame = {...latePeer.frame};
+display.emit('grab-op-begin', late, Meta.GrabOp.MOVING);
+late.frame = {...late.frame, x: late.frame.x + 100, y: late.frame.y + 100};
+pointer = {x: peerFrame.x + peerFrame.width / 2, y: peerFrame.y + 100};
+late.emit('position-changed');
+assert(previews().length === 1, 'Disable test requires an active swap preview');
+const stoppedPreview = ext._preview;
+ext.disable();
+assert(previews().length === 0 && stoppedPreview.timer === null && stoppedPreview.destroyed,
+    'Disable must synchronously remove the preview and polling source');
+const previewReadsAfterDisable = pointerReads; await wait(80);
+assert(pointerReads === previewReadsAfterDisable && late.actor.handlers.size === 0 &&
+    latePeer.actor.handlers.size === 0, 'No pointer polling or target observers may survive disable');
+// Disabling during keyboard selection must release its modal grab synchronously.
+ext = new JustTiling(); ext.enable(); await wait(500);
+display.focus_window = late; display.emit('notify::focus-window');
+Main.wm.press('swap-select');
+assert(Main.modalCount === 1 && numbered().length === 1, 'Disable test requires active numbered selection');
+ext.disable();
+assert(Main.modalCount === 0 && numbered().length === 0 && borderWidgets.size === 0 &&
+    Main.uiGroup.children.size === 0 && late.actor.handlers.size === 0 && latePeer.actor.handlers.size === 0,
+    'Disabling selection must release all modal input, widgets and target observers');
+// Match Mutter: allows_resize() is false while fully maximized. A newly
+// created window must unmaximize before fixed-size classification can run.
+ext = new JustTiling(); ext.enable(); await wait(500);
+const openingMaximized = new Window(92);
+openingMaximized.flags = Meta.MaximizeFlags.BOTH;
+openingMaximized.frame = {...workspace.get_work_area_for_monitor(0)};
+let unmaximizeCalls = 0;
+openingMaximized.unmaximize = () => { unmaximizeCalls++; openingMaximized.flags = 0; };
+assert(!openingMaximized.allows_resize(), 'Fixture must emulate native maximized resize eligibility');
+windows.push(openingMaximized); display.emit('window-created', openingMaximized); await wait(800);
+assert(ext._controller.records.get(92).state === 'tiled' && openingMaximized.flags === 0 &&
+    unmaximizeCalls === 1 && openingMaximized.moves > 0,
+    'New maximized windows must normalize and tile without closing or using a shortcut');
+display.focus_window = openingMaximized; display.emit('notify::focus-window');
+assert(ext._border.widget !== null, 'Focused tiled window needs a border before maximization');
+const manuallyMaximizedFrame = {...workspace.get_work_area_for_monitor(0)};
+openingMaximized.flags = Meta.MaximizeFlags.BOTH;
+openingMaximized.frame = manuallyMaximizedFrame;
+openingMaximized.emit('notify::maximized-horizontally');
+assert(ext._border.widget === null, 'Maximization notification must remove focus border immediately');
+await wait(150);
+assert(ext._controller.records.get(92).reason === 'user-maximized' &&
+    openingMaximized.flags === Meta.MaximizeFlags.BOTH &&
+    JSON.stringify(openingMaximized.frame) === JSON.stringify(manuallyMaximizedFrame) && unmaximizeCalls === 1,
+    'Manual maximization must leave the tile and preserve the native maximized window');
+assert(ext._border.widget === null, 'Maximized floating window must not receive a focus border');
+openingMaximized.flags = 0;
+openingMaximized.frame = {x: 90, y: 80, width: 700, height: 500};
+openingMaximized.emit('notify::maximized-horizontally'); await wait(400);
+assert(ext._controller.records.get(92).state === 'tiled' && !openingMaximized.above && ext._border.widget !== null,
+    'Restoring must automatically retile the window and restore its focus border');
+// Marking an app always-floating while maximized must suppress automatic return.
+openingMaximized.flags = Meta.MaximizeFlags.BOTH;
+openingMaximized.frame = {...manuallyMaximizedFrame};
+openingMaximized.emit('notify::maximized-horizontally'); await wait(100);
+const previousFloatingApps = ext._settings.get_strv('floating-apps');
+openingMaximized.get_gtk_application_id = () => 'org.test.RestoreException';
+ext._settings.set_strv('floating-apps', [...previousFloatingApps, 'gtk-app-id:org.test.RestoreException']);
+openingMaximized.emit('notify::gtk-application-id'); await wait(100);
+assert(ext._border.widget === null, 'App-exempt maximized window must have no focus border');
+openingMaximized.flags = 0;
+openingMaximized.frame = {x: 120, y: 100, width: 750, height: 500};
+openingMaximized.emit('notify::maximized-horizontally'); await wait(300);
+assert(ext._controller.records.get(92).state === 'floating' && ext._border.widget !== null,
+    'Restoring an always-floating app must preserve its floating choice and show its border');
+openingMaximized.emit('unmanaging'); windows.splice(windows.indexOf(openingMaximized), 1); await wait(100);
+ext._settings.set_strv('floating-apps', previousFloatingApps);
+ext.disable();
+assert(Main.modalCount === 0 && borderWidgets.size === 0 && display.handlers.size === 0,
+    'Maximization test must leave no observers or UI resources');
+print('Shell adapter smoke OK: lifecycle, workspaces, settings, shortcut migration, conflicts, native-menu doubles, shared-border resizing, native drag swapping, optional focus border doubles, numbered keyboard swaps, initial/manual maximization, restore-to-grid and cleanup.');

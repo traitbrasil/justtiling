@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 msgid ""
-msgstr "Project-Id-Version: Trait JustTiling 0.17.0\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: pt_BR\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+msgstr "Project-Id-Version: Trait JustTiling 0.18.2\nReport-Msgid-Bugs-To: just@trait.com.br\nPO-Revision-Date: 2026-10-24 00:00-0300\nLast-Translator: Dudu Broering / Trait\nLanguage: pt_BR\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
 
 msgid " or "
 msgstr " ou "
@@ -254,3 +254,18 @@ msgstr "combinação inválida"
 msgid "the compositor refused the shortcut"
 msgstr "o compositor recusou o registro"
 
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "Learned applications"
+msgstr "Aplicativos com aprendizado"
+
+msgid "Application list"
+msgstr "Lista de aplicativos"
+
+msgid "Applications: %s"
+msgstr "Aplicativos: %s"
+
+msgid "Swap with a numbered window"
+msgstr "Trocar com uma janela numerada"

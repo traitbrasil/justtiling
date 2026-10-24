@@ -10,7 +10,11 @@ const application = new Adw.Application({application_id: 'com.trait.JustTiling.E
 application.connect('activate', () => {
     const window = new Adw.PreferencesWindow({application, default_width: 700, default_height: 800});
     const settings = new Gio.Settings({schema_id: 'org.gnome.shell.extensions.justtiling'});
-    const ui = buildPreferences(window, settings);
+    const metadataFile = Gio.File.new_for_uri(import.meta.url).get_parent().get_parent().get_child('metadata.json');
+    const [, bytes] = metadataFile.load_contents(null);
+    const metadata = JSON.parse(new TextDecoder().decode(bytes));
+    const ui = buildPreferences(window, settings, metadata);
+    if (ui.about.versionRow.subtitle !== metadata['version-name']) throw new Error('Preview version mismatch');
     if (ui.about.page.title !== 'About') throw new Error('English preview did not select English');
     window.connect('close-request', () => { ui.dispose(); return false; });
     window.present();

@@ -34,3 +34,14 @@ export const wm = {
     removeKeybinding(name) { return this.bindings.delete(name); },
     press(name) { this.bindings.get(name)?.handler(); },
 };
+
+export let actionMode = 1;
+export let modalCount = 0;
+export const uiGroup = {children: new Set(), add_child(child) { child.parent = this; this.children.add(child); }};
+export let failGrab = false;
+export function setFailGrab(value) { failGrab = value; }
+export function pushModal(actor, params) {
+    modalCount++; actionMode = params.actionMode;
+    return {is_revoked: () => failGrab, connect: () => 1, disconnect() {}};
+}
+export function popModal() { modalCount--; actionMode = 1; }

@@ -1,12 +1,12 @@
 {
   "uuid": "just@trait.com.br",
   "name": "Trait JustTiling",
-  "description": "Automatic window tiling for a single-monitor GNOME desktop. Independent workspace layouts, adjustable splits, drag-and-drop and keyboard swaps, focus highlighting, application-wide floating exceptions and local learning of manually preferred app positions and sizes.\n\nInterface available in English and Portuguese. Default shortcuts: Super+T to toggle tiling, Super+F to toggle the active window, Super+C to cycle focus through tiled windows, and Super+Arrow to swap windows. The arrow shortcuts temporarily replace conflicting system bindings and restore them when tiling stops. Shortcuts are configurable.\n\nOn Debian/Ubuntu, unidentified helper windows can inherit application exceptions through read-only installed-package queries. Multiple-monitor tiling is not supported.",
+  "description": "Automatic window tiling for a single-monitor GNOME desktop. Independent workspace layouts, adjustable splits, drag-and-drop swaps with visual previews and keyboard swaps, focus highlighting, application-wide floating exceptions and local learning of manually preferred app positions and sizes.\n\nInterface available in English and Portuguese. Default shortcuts: Super+T to toggle tiling, Super+O to toggle the active window, Super+F to cycle focus through tiled windows, Super+C to choose a numbered window for swapping, and Super+Arrow to swap windows. The arrow shortcuts temporarily replace conflicting system bindings and restore them when tiling stops. Shortcuts are configurable.\n\nOn Debian/Ubuntu, unidentified helper windows can inherit application exceptions through read-only installed-package queries. Multiple-monitor tiling is not supported.",
   "shell-version": [
     "51"
   ],
   "settings-schema": "org.gnome.shell.extensions.justtiling",
-  "version-name": "0.17.0",
+  "version-name": "0.19.2",
   "url": "https://trait.li/just",
   "gettext-domain": "trait-justtiling"
 }

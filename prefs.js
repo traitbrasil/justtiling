@@ -4,6 +4,6 @@ import {buildPreferences} from './src/preferences.js';
 
 export default class JustTilingPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
-        buildPreferences(window, this.getSettings());
+        buildPreferences(window, this.getSettings(), this.metadata);
     }
 }

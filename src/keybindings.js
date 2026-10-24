@@ -19,6 +19,7 @@ export function canOverride(action, value) {
 
 export const SHORTCUT_TITLES = {
     'toggle-tiling': N_("Toggle automatic tiling"),
+    'swap-select': N_("Swap with a numbered window"),
     'cycle-focus': N_("Cycle focus through tiled windows"),
     'toggle-floating': N_("Toggle the window between tiled and floating"),
     'swap-left': N_("Swap with the window on the left"), 'swap-right': N_("Swap with the window on the right"),

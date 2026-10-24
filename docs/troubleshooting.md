@@ -20,9 +20,11 @@ Disabling and enabling the extension does not reliably unload imported JavaScrip
 
 Check that automatic tiling is on, the session is GNOME Shell 51, and only one logical monitor is connected. If tiling paused after a second monitor was connected, return to one monitor and resume explicitly.
 
-Confirm that the application is not in **Always-floating applications**. Dialogs and special windows are excluded automatically. Fixed-size windows and windows that cannot fit are also left floating. Super+F cannot override those constraints.
+Confirm that the application is not in **Always-floating applications**. Dialogs and special windows are excluded automatically. Fixed-size windows and windows that cannot fit are also left floating. Super+O cannot override those constraints.
 
 Other window managers may conflict. The extension checks for known conflicts and may refuse activation or pause management when one becomes active.
+
+Slow-opening windows may briefly remain floating while mapping. Starting with 0.17.1, windows that exceed the readiness polling deadline are reconsidered when a later native event confirms they are ready. Explicit floating choices and other incompatibility fallbacks remain respected.
 
 ## A helper window does not inherit its application's exception
 

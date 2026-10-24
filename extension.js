@@ -11,6 +11,8 @@ import {ShortcutOverrides} from './src/shortcutOverrides.js';
 import {Keybindings} from './src/keybindings.js';
 import {migrateShortcuts} from './src/settings.js';
 import {FocusBorder} from './src/focusBorder.js';
+import {NumberedSwap} from './src/numberedSwap.js';
+import {SwapPreview} from './src/swapPreview.js';
 import {Indicator} from './src/indicator.js';
 
 export default class JustTiling extends Extension {
@@ -52,6 +54,8 @@ export default class JustTiling extends Extension {
                 else
                     this._controller.event(event);
                 this._border?.sync();
+                this._preview?.sync();
+                this._numberedSwap?.sync();
                 if (event.kind !== 'geometry') this._indicator?.update();
             });
             this._controller.floatingApps = this._floatingApps();
@@ -64,6 +68,7 @@ export default class JustTiling extends Extension {
                     else
                         this._settings.set_boolean('tiling-enabled', !this._settings.get_boolean('tiling-enabled'));
                 },
+                'swap-select': () => this._numberedSwap?.toggle(),
                 'cycle-focus': () => this._controller.cycleFocus(),
                 'toggle-floating': () => this._controller.toggleWindow(this._adapter.focusedId()),
                 ...Object.fromEntries(['left', 'right', 'up', 'down'].map(direction =>
@@ -72,6 +77,7 @@ export default class JustTiling extends Extension {
             this._keys.refresh();
             this._connections.add(this._settings, 'changed', (_settings, key) => {
                 if (key === 'system-shortcut-backup') return;
+                this._numberedSwap?.cancel();
                 if (key === 'learn-layouts' || key === 'learned-layouts') {
                     this._controller.learnLayouts = this._settings.get_boolean('learn-layouts');
                     this._controller.learnedLayouts = readLearning(this._settings.get_string('learned-layouts'));
@@ -96,6 +102,8 @@ export default class JustTiling extends Extension {
                 }
                 this._indicator?.update();
                 this._border?.sync();
+                this._preview?.sync();
+                this._numberedSwap?.sync();
             });
             this._indicator = new Indicator(this.uuid, this._adapter, this._controller, this._settings, enabled => {
                 const previous = this._settings.get_boolean('tiling-enabled');
@@ -103,6 +111,8 @@ export default class JustTiling extends Extension {
                 if (previous === enabled) this._syncEnabled();
             }, () => this.openPreferences());
             this._border = new FocusBorder(this._adapter, this._controller, this._settings);
+            this._preview = new SwapPreview(this._adapter, this._controller);
+            this._numberedSwap = new NumberedSwap(this._adapter, this._controller);
             this._controller.onStateChanged = () => {
                 const active = this._controller.running && !this._controller.suspended;
                 if (this._keysActive !== active) {
@@ -111,8 +121,10 @@ export default class JustTiling extends Extension {
                 }
                 this._indicator?.update();
                 this._border?.sync();
+                this._preview?.sync();
+                this._numberedSwap?.sync();
             };
-            this._adapter.log('info', 'Trait JustTiling 0.17.0 loaded.');
+            this._adapter.log('info', 'Trait JustTiling 0.19.2 loaded.');
             this._syncEnabled(false);
         } catch (error) {
             this.disable();
@@ -154,6 +166,8 @@ export default class JustTiling extends Extension {
             this._controller.onStateChanged = null;
             this._controller.onLearnedLayouts = null;
         }
+        this._numberedSwap?.destroy();
+        this._preview?.destroy();
         this._border?.destroy();
         this._indicator?.destroy();
         this._adapter?.stopObserving();
@@ -167,5 +181,7 @@ export default class JustTiling extends Extension {
         this._keysActive = null;
         this._indicator = null;
         this._border = null;
+        this._preview = null;
+        this._numberedSwap = null;
     }
 }

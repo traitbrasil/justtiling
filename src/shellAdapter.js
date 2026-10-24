@@ -214,8 +214,10 @@ export class ShellAdapter {
         };
     }
 
-    focusedVisual() {
-        const win = this.windows.get(this.focusedId())?.win;
+    focusedVisual() { return this.windowVisual(this.focusedId()); }
+
+    windowVisual(id) {
+        const win = this.windows.get(id)?.win;
         if (!win) return null;
         return {actor: win.get_compositor_private(), frame: plainRect(win.get_frame_rect()),
             buffer: plainRect(win.get_buffer_rect())};
@@ -263,7 +265,7 @@ export class ShellAdapter {
     }
     bindShortcut(name, settings, handler) {
         return Main.wm.addKeybinding(name, settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
-            Shell.ActionMode.NORMAL, handler) !== Meta.KeyBindingAction.NONE;
+            Shell.ActionMode.NORMAL | (name === 'swap-select' ? Shell.ActionMode.POPUP : 0), handler) !== Meta.KeyBindingAction.NONE;
     }
     unbindShortcut(name) { Main.wm.removeKeybinding(name); }
     move(id, r) {

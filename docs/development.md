@@ -24,7 +24,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.17.0 pure suite has 141 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.19.2 pure suite has 161 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ The 0.17.0 pure suite has 141 tests. Integration checks complement those tests; 
 | Rules and identity | `src/rules.js`, `processInfo.js`, `packageIdentity.js`, and `packageLookup.js` handle exact application rules and optional helper identification |
 | Keyboard | `src/keybindings.js` and `shortcutOverrides.js` register actions, handle conflicts, and journal reversible system bindings |
 | Learning | `src/learning.js` validates local normalized profiles and scores feasible insertion candidates |
-| Shell UI | `src/indicator.js` and `focusBorder.js` provide the panel menu and native actor decoration |
+| Shell UI | `src/indicator.js`, `focusBorder.js`, and `swapPreview.js` provide the panel menu and native actor decorations. The swap preview samples the pointer only during a tile drag and shares validation with the final drop |
 | Preferences | `prefs.js`, `src/preferences.js`, and `preferencesShortcuts.js` run in a separate GTK process |
 | Translation | `src/i18n.js`, `strings.js`, and `po/` provide Gettext messages and catalogs |
 

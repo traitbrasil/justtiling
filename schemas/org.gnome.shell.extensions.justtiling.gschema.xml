@@ -2,7 +2,7 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.justtiling" path="/org/gnome/shell/extensions/justtiling/">
     <key name="preferences-version" type="i">
-      <default>0</default><range min="0" max="1"/>
+      <default>0</default><range min="0" max="2"/>
       <summary>Internal version of Just Tiling preference migrations</summary>
     </key>
     <key name="tiling-enabled" type="b">
@@ -24,8 +24,10 @@
       <summary>Swap focused tile up</summary></key>
     <key name="swap-down" type="as"><default>['&lt;Super&gt;Down']</default>
       <summary>Swap focused tile down</summary></key>
+    <key name="swap-select" type="as"><default>['&lt;Super&gt;c']</default>
+      <summary>Select a numbered tile to swap with the focused window</summary></key>
     <key name="cycle-focus" type="as">
-      <default>['&lt;Super&gt;c']</default>
+      <default>['&lt;Super&gt;f']</default>
       <summary>Cycle focus through tiled windows on the current workspace</summary>
     </key>
     <key name="new-window-side" type="s">
@@ -66,7 +68,7 @@
       <summary>Toggle auto-tiling without unloading the extension</summary>
     </key>
     <key name="toggle-floating" type="as">
-      <default>['&lt;Super&gt;f']</default>
+      <default>['&lt;Super&gt;o']</default>
       <summary>Toggle the focused window between tiled and floating</summary>
     </key>
     <key name="inner-gap" type="i">

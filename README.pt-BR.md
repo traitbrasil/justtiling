@@ -20,7 +20,7 @@
 
 A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos, com um layout independente por workspace. Ajuste uma divisão, troque duas janelas ou mantenha um aplicativo flutuante. Você escolhe como trabalhar.
 
-**Versão atual: 0.17.0.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
+**Versão atual: 0.19.2.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
 
 ## Um espaço que acompanha seu trabalho
 
@@ -29,6 +29,7 @@ A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos
 - **Prioridade para seu foco:** preserve o tamanho da janela ativa ao abrir outra, sempre que houver espaço.
 - **Aprendizado local:** seus ajustes manuais de tamanho e posição orientam a abertura futura de aplicativos. Ativado por padrão, pode ser pausado ou apagado por aplicativo ou por completo.
 - **Liberdade para flutuar:** janelas incompatíveis ficam fora do grid. Defina também os aplicativos que devem permanecer flutuantes.
+- **Prévia da troca:** ao arrastar, um overlay semitransparente na cor de destaque do GNOME indica a janela que receberá o swap.
 - **Destaque visual:** borda opcional na cor de destaque do GNOME.
 - **Preferências nativas:** personalize espaçamentos, atalhos e comportamento sem editar arquivos.
 
@@ -59,11 +60,12 @@ Os guias detalhados estão em inglês: [instalação e atualização](docs/insta
 | Atalho | Ação |
 | --- | --- |
 | **Super + T** | Ligar ou desligar a organização automática |
-| **Super + F** | Alternar a janela ativa entre organizada e flutuante |
-| **Super + C** | Alternar o foco entre janelas organizadas |
+| **Super + O** | Alternar a janela ativa entre organizada e flutuante |
+| **Super + F** | Alternar o foco entre janelas organizadas |
+| **Super + C** | Trocar com uma janela numerada; Esc ou repetir o atalho cancela |
 | **Super + ← / → / ↑ / ↓** | Trocar a janela ativa com a vizinha |
 
-As sete ações são configuráveis nas Preferências. Super+setas substitui temporariamente os atalhos conflitantes do GNOME enquanto a organização está ativa; eles são restaurados quando a gestão é interrompida.
+As oito ações são configuráveis nas Preferências. Super+setas substitui temporariamente os atalhos conflitantes do GNOME enquanto a organização está ativa; eles são restaurados quando a gestão é interrompida.
 
 ## Compatibilidade e privacidade
 

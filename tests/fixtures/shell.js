@@ -6,4 +6,4 @@ export const tracker = {
     emit() { for (const {fn} of [...handlers.values()]) fn(this); },
     get_window_app(win) { return win.app ?? null; },
 };
-export default {ActionMode: {NORMAL: 1}, WindowTracker: {get_default: () => tracker}};
+export default {ActionMode: {NORMAL: 1, POPUP: 2}, WindowTracker: {get_default: () => tracker}};

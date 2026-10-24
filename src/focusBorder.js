@@ -44,7 +44,7 @@ export class FocusBorder {
             const data = this.adapter.read(id);
             const record = this.controller.records.get(id);
             if (!data?.ready || !data.normal || data.transient || !data.inScope || data.minimized ||
-                data.fullscreen || !['tiled', 'floating'].includes(record?.state)) {
+                data.fullscreen || data.maximized || !['tiled', 'floating'].includes(record?.state)) {
                 this.clear(); return;
             }
             const visual = this.adapter.focusedVisual();

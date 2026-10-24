@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory(prefix='justtiling-smoke-') as tmp:
         'resource:///org/gnome/shell/ui/popupMenu.js': (stage / 'tests/fixtures/popupMenu.js').as_uri(),
         './packageLookup.js': (stage / 'tests/fixtures/packageLookup.js').as_uri(),
         'gi://Shell': (stage / 'tests/fixtures/shell.js').as_uri(),
+        'gi://Clutter': (stage / 'tests/fixtures/clutter.js').as_uri(),
         'gi://St': (stage / 'tests/fixtures/st.js').as_uri(),
     }
     for path in [stage / 'extension.js', *(stage / 'src').rglob('*.js')]:
