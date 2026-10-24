@@ -107,12 +107,6 @@ export class Controller {
             if (this.resize?.id === id) this.endSplitResize();
             if (this.drag?.id === id) this.endDrag();
             r.grabbed = false;
-        } else if (kind === 'above' && r) {
-            if (!r.settingAbove && r.raised && !this.adapter.read(id)?.above) {
-                r.raised = false;
-                r.wantsAbove = false;
-            }
-            return;
         } else if (kind === 'geometry') {
             if (this.resize || this.drag) return;
             if (r?.state !== 'tiled') {
@@ -197,7 +191,6 @@ export class Controller {
     release(r, restoreGeometry) {
         try {
             if (!this.adapter.read(r.id)?.alive) return;
-            if (r.raised) this.setAbove(r, false);
             if (restoreGeometry && r.touched && r.snapshot)
                 this.adapter.restore(r.id, r.snapshot);
         } catch (e) {
@@ -209,39 +202,17 @@ export class Controller {
         }
     }
 
-    setAbove(r, value) {
-        r.settingAbove = true;
-        try {
-            // Set ownership before the synchronous notify::above callback.
-            r.raised = value;
-            this.adapter.above(r.id, value);
-        } finally {
-            r.settingAbove = false;
-        }
-    }
-
     float(r, reason, restore = true) {
+        // Preserve native stacking: forcing always-on-top here can make Mutter
+        // announce subsequently mapped helper windows as needing attention.
         if (this.resize?.id === r.id) this.resize = null;
         if (this.drag?.id === r.id) this.drag = null;
         this.removeWindow(r.id);
         this.release(r, restore);
         r.state = 'floating';
         r.reason = reason;
-        r.wantsAbove = true;
         const warning = ['not-ready', 'prepare-timeout', 'resize-not-converged'].includes(reason);
         this.adapter.log(warning ? 'warn' : 'info', `Floating ${r.id}: ${reason}`);
-    }
-
-    syncAbove(r, data, paused) {
-        if (!data?.alive || r.grabbed) return;
-        const shouldRaise = r.state === 'floating' && r.wantsAbove && data.normal &&
-            !data.transient && !data.overrideRedirect && !data.skipTaskbar &&
-            data.inScope && !data.fullscreen && !data.minimized && !paused;
-        if (!shouldRaise && r.raised) this.setAbove(r, false);
-        if (shouldRaise && !data.above) {
-            this.capture(r);
-            this.setAbove(r, true);
-        }
     }
 
     toggleWindow(id) {
@@ -598,7 +569,7 @@ export class Controller {
         for (const id of live) {
             if (!this.records.has(id)) this.records.set(id, {
                 id, state: 'pending', born: now, snapshot: null,
-                touched: false, raised: false, wantsAbove: false, request: null,
+                touched: false, request: null,
             });
         }
         const data = new Map([...this.records.keys()].map(id => [id, this.adapter.read(id)]));
@@ -636,7 +607,6 @@ export class Controller {
             // Merely switching workspace does not release that workspace's tiles.
             // Only transfers, closure, or explicit state changes alter their ownership.
             if (reason === 'outside-target' && d.domain !== undefined && d.monitor === 0) {
-                this.syncAbove(r, d, true);
                 continue;
             }
             // Readiness timeout only ends polling. A later native event can
@@ -657,7 +627,6 @@ export class Controller {
                 this.release(r, false);
                 r.state = 'pending';
                 r.reason = null;
-                r.wantsAbove = false;
                 r.born = now;
             }
             // Features may still be unset at window-created. Do not permanently
@@ -699,7 +668,7 @@ export class Controller {
                 this.release(r, reason === 'outside-target');
                 r.state = 'excluded';
                 r.reason = reason;
-                // Fixed-size normal windows also get floating overlay treatment.
+                // Fixed-size normal windows stay outside the grid.
                 if (reason === 'fixed-size') this.float(r, reason, false);
             } else if (!reason && r.state === 'excluded') {
                 r.state = 'pending';
@@ -708,7 +677,6 @@ export class Controller {
             }
             if (reason === 'outside-target' && r.state === 'floating' && r.touched)
                 this.release(r, true);
-            this.syncAbove(r, d, paused);
         }
         if (this.adapter.workspaces) {
             const remaining = new Set(this.adapter.workspaces());
@@ -811,8 +779,6 @@ export class Controller {
             if (!sameRect(this.adapter.read(id)?.rect, rect, 1))
                 this.schedule(Math.max(1, r.request.deadline - now));
         }
-        for (const r of this.records.values())
-            this.syncAbove(r, this.adapter.read(r.id), false);
         if (removed) this.schedule(0);
         else this.commitLearning(plan);
     }

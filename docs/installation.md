@@ -10,7 +10,7 @@
 
 Check your Shell version with `gnome-shell --version`. Other GNOME versions and multiple-monitor tiling are outside the current support scope.
 
-Version 0.19.2 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
+Version 0.19.3 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
 
 ## Build and install
 

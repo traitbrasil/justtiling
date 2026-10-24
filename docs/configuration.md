@@ -34,6 +34,8 @@ The extension ships with [30 default floating application identifiers](default-f
 
 Rules match application identifiers rather than document titles. Recognized application children can inherit the rule. On Debian/Ubuntu, an optional, read-only installed-package lookup helps identify otherwise unrecognized helper windows. Missing tools or ambiguous matches leave the helper unassociated.
 
+Floating exceptions preserve normal GNOME stacking and focus behavior. The extension does not enable or disable **Always on Top** for them. An explicit Always on Top choice remains under your control.
+
 ## Local learning
 
 Learning stores a stable application identifier and preferred normalized position and size. It does not store window titles, browser URLs, document contents, or a screenshot of your workspace.

@@ -35,6 +35,7 @@ Object.assign(manager, {get_active_workspace: () => activeWorkspace,
 const display = new Signals();
 let monitors = 1;
 const windows = [];
+let aboveChanges = 0;
 Object.assign(display, {list_all_windows: () => windows,
     get_n_monitors: () => monitors, focus_window: null});
 let pointer = {x: 0, y: 0}, pointerReads = 0;
@@ -88,8 +89,8 @@ class Window extends Signals {
     is_above() { return this.above; }
     unmaximize() { this.flags = 0; }
     set_maximize_flags(flags) { this.flags = flags; }
-    make_above() { this.above = true; this.emit('notify::above'); }
-    unmake_above() { this.above = false; this.emit('notify::above'); }
+    make_above() { aboveChanges++; this.above = true; this.emit('notify::above'); }
+    unmake_above() { aboveChanges++; this.above = false; this.emit('notify::above'); }
     move_resize_frame(userOp, x, y, width, height) {
         assert(userOp === false, 'Programmatic move must not be a user operation');
         this.moves++;
@@ -119,7 +120,7 @@ const firstMoves = w1.moves;
 const w2 = new Window(2, 3000);
 windows.push(w2); display.emit('window-created', w2);
 await wait(500);
-assert(w2.above && w2.moves === 0, 'Rejected window must float without resizing');
+assert(!w2.above && w2.moves === 0, 'Rejected window must float without resizing');
 assert(w1.moves === firstMoves, 'Preflight rejection must not reflow existing tile');
 const w3 = new Window(3);
 windows.push(w3); display.emit('window-created', w3);
@@ -138,7 +139,7 @@ assert(Main.wm.bindings.size === 0, 'Disable leaked keybindings');
 assert(JSON.stringify(nativeKeys.get_strv('unmaximize')) === JSON.stringify(['<Super>Down', '<Alt>F5']),
     'Disable did not restore original native shortcut');
 assert(w1.frame.width === 700 && w1.frame.x === 50, 'Disable must restore original geometry');
-assert(!w2.above, 'Disable must restore floating layer');
+assert(!w2.above, 'Disable must preserve native floating stacking');
 assert(w1.handlers.size === 0 && w2.handlers.size === 0, 'Window signals leaked');
 assert(display.handlers.size === 0 && manager.handlers.size === 0, 'Global signals leaked');
 assert(Main.layoutManager.handlers.size === 0 && Main.extensionManager.handlers.size === 0, 'Shell signals leaked');
@@ -177,12 +178,12 @@ activeWorkspace = otherWorkspace; manager.emit('active-workspace-changed'); awai
 assert(w4.frame.width === 1570, 'New workspace must have its own layout');
 assert(w1.moves === firstMovesBeforeSwitch && w1.frame.width === firstFrame.width,
     'Workspace switch must not restore/reflow the old workspace');
-assert(!w2.above, 'Float in inactive workspace must release above layer');
+assert(!w2.above, 'Inactive workspace must preserve native stacking');
 activeWorkspace = workspace; manager.emit('active-workspace-changed'); await wait(500);
 assert(w1.moves === firstMovesBeforeSwitch, 'Returning must preserve existing geometry');
 
 settings.set_strv('floating-apps', ['wm-class:local.test.App']); await wait(500);
-assert(w1.frame.width === 700 && w1.above, 'Live app exception must restore and float');
+assert(w1.frame.width === 700 && !w1.above, 'Live app exception must restore and float');
 display.focus_window = w1; display.emit('notify::focus-window');
 Main.wm.press('toggle-floating'); await wait(500);
 assert(w1.frame.width === 1570 && !w1.above, 'Individual shortcut must override app floating default');
@@ -190,7 +191,7 @@ assert(settings.get_strv('floating-apps')[0] === 'wm-class:local.test.App', 'Win
 
 Main.wm.press('toggle-tiling'); await wait(100);
 assert(!settings.get_boolean('tiling-enabled'), 'Toggle must persist off state');
-assert(w1.frame.width === 700 && !w2.above, 'Soft off must restore geometry and floating layer');
+assert(w1.frame.width === 700 && !w2.above, 'Soft off must restore geometry without changing native stacking');
 const stoppedMoves = w1.moves;
 const manualFrame = {x: 120, y: 100, width: 850, height: 550};
 w1.frame = {...manualFrame}; w1.emit('size-changed'); await wait(500);
@@ -199,7 +200,7 @@ ext.disable(); ext.enable(); await wait(400);
 assert(w1.moves === stoppedMoves, 'Reload must preserve tiling-enabled=false');
 Main.wm.press('toggle-tiling'); await wait(500);
 assert(settings.get_boolean('tiling-enabled'), 'Toggle should turn tiling on');
-assert(w1.above && w1.frame.width === 850, 'Persistent app exception should survive reload');
+assert(!w1.above && w1.frame.width === 850, 'Persistent app exception should survive reload');
 settings.set_strv('floating-apps', []); await wait(500);
 assert(w1.frame.width === 1570, 'Removing app exception should reconsider that window');
 
@@ -226,13 +227,13 @@ const enabledItem = button.menu.items.find(item => item.label.text.startsWith(en
 button.menu.open(); button.menu.close();
 display.focus_window = w2;
 floatingItem.emit('activate'); await wait(500);
-assert(w1.above && w1.frame.width === 850, 'Menu action lost its captured target after closing');
+assert(!w1.above && w1.frame.width === 850, 'Menu action lost its captured target after closing');
 display.focus_window = w1; button.menu.open();
 floatingItem.emit('activate'); await wait(500);
 assert(w1.frame.width === 1570, 'Menu must reinsert a floating window');
 appRuleItem.toggle(); await wait(500);
 assert(settings.get_strv('floating-apps').includes('wm-class:local.test.App'), 'Panel must persist app exception');
-assert(w1.above && w1.frame.width === 850, 'Explicit app action must override the temporary tiled choice');
+assert(!w1.above && w1.frame.width === 850, 'Explicit app action must override the temporary tiled choice');
 appRuleItem.toggle(); await wait(500);
 assert(settings.get_strv('floating-apps').length === 0 && w1.frame.width === 1570,
     'Removing app menu rule should reconsider its windows');
@@ -345,7 +346,7 @@ assert(!settings.get_boolean('drag-swap'), 'Drag swap menu did not persist prefe
 display.emit('grab-op-begin', w5, Meta.GrabOp.MOVING);
 const floated = {...w5.frame, x: 100, y: 110}; w5.frame = floated; w5.emit('position-changed');
 display.emit('grab-op-end', w5, Meta.GrabOp.MOVING); await wait(500);
-assert(w5.above && JSON.stringify(w5.frame) === JSON.stringify(floated),
+assert(!w5.above && JSON.stringify(w5.frame) === JSON.stringify(floated),
     'Disabling drag swaps should preserve the original floating behavior');
 settings.set_boolean('drag-swap', true); await wait(100);
 assert(swapItem.state, 'Drag swap menu did not reflect external preference change');
@@ -494,7 +495,11 @@ settings.set_strv('floating-apps', priorRules); await wait(200);
 // Reproduce the real capture: independent helper, NORMAL, no app ID or
 // transient parent, 360x72, min 1x1, and its desktop process is not running.
 const beforePackageRules = settings.get_strv('floating-apps');
-settings.set_strv('floating-apps', ['wm-class:org.openlogi.openlogi']);
+settings.set_strv('floating-apps', ['wm-class:org.openlogi.openlogi', 'wm-class:local.test.App']);
+await wait(200);
+display.focus_window = w1; display.emit('notify::focus-window');
+assert(ext._controller.records.get(1).state === 'floating' && !w1.above,
+    'Focused app exception must remain on the normal native layer before helper mapping');
 packageFixture.aliases.set('openlogi.desktop', ['wm-class:org.openlogi.openlogi']);
 packageFixture.executables.set(300, '/usr/bin/openlogi-overlay');
 let releasePackage;
@@ -510,6 +515,8 @@ assert(osd.moves === 0 && ext._controller.records.get(17).state === 'pending',
 releasePackage('openlogi.desktop'); await wait(200);
 assert(osd.moves === 0 && osd.frame.width === 360 && osd.frame.height === 72 &&
     ext._controller.records.get(17).reason === 'app-exception', 'Independent package helper must inherit application exception');
+assert(!osd.above && !w1.above && osd.activatedAt === undefined && aboveChanges === 0,
+    'Mapping an OSD over a floating exception must not impose topmost flags or activate the helper');
 // Both legacy default rules and canonical application IDs work without the main window.
 settings.set_strv('floating-apps', ['app-id:openlogi.desktop']);
 // All normal windows from this helper inherit it, regardless of their class.
@@ -735,4 +742,5 @@ ext._settings.set_strv('floating-apps', previousFloatingApps);
 ext.disable();
 assert(Main.modalCount === 0 && borderWidgets.size === 0 && display.handlers.size === 0,
     'Maximization test must leave no observers or UI resources');
+assert(aboveChanges === 0, 'Extension must never impose or clear native always-on-top flags');
 print('Shell adapter smoke OK: lifecycle, workspaces, settings, shortcut migration, conflicts, native-menu doubles, shared-border resizing, native drag swapping, optional focus border doubles, numbered keyboard swaps, initial/manual maximization, restore-to-grid and cleanup.');

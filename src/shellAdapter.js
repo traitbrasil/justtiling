@@ -93,7 +93,6 @@ export class ShellAdapter {
             signals.add(win, name, () => {
                 this.emit('changed', id); this.traceWindow(win, name);
             });
-        signals.add(win, 'notify::above', () => this.emit('above', id));
     }
 
     list() { return [...this.windows.keys()]; }
@@ -278,12 +277,6 @@ export class ShellAdapter {
         win.activate(global.get_current_time());
     }
     unmaximize(id) { this.windows.get(id)?.win.unmaximize(); }
-    above(id, value) {
-        const win = this.windows.get(id)?.win;
-        if (!win) return;
-        if (value) win.make_above();
-        else win.unmake_above();
-    }
     restore(id, snapshot) {
         const win = this.windows.get(id)?.win;
         if (!win || win.is_fullscreen() || win.minimized) return;

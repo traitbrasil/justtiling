@@ -6,7 +6,7 @@
     "51"
   ],
   "settings-schema": "org.gnome.shell.extensions.justtiling",
-  "version-name": "0.19.2",
+  "version-name": "0.19.3",
   "url": "https://trait.li/just",
   "gettext-domain": "trait-justtiling"
 }

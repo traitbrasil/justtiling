@@ -20,7 +20,7 @@
 
 A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos, com um layout independente por workspace. Ajuste uma divisão, troque duas janelas ou mantenha um aplicativo flutuante. Você escolhe como trabalhar.
 
-**Versão atual: 0.19.2.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
+**Versão atual: 0.19.3.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
 
 ## Um espaço que acompanha seu trabalho
 

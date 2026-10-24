@@ -199,6 +199,7 @@ class FakeAdapter {
         this.windows = new Map();
         this.moves = [];
         this.restores = [];
+        this.aboveCalls = [];
         this.messages = [];
         this.monitors = 1;
         this.active = true;
@@ -248,6 +249,7 @@ class FakeAdapter {
         d.flags = snapshot.flags;
     }
     above(id, value) {
+        this.aboveCalls.push({id, value});
         this.windows.get(id).above = value;
         this.event?.({kind: 'above', id});
     }
@@ -289,7 +291,7 @@ test('preflight rejection preserves existing tile and creates only per-window fl
     equal(a.moves.length, moves);
     equal(a.read(1).rect, frame);
     equal(c.records.get(2).reason, 'insufficient-space');
-    assert(a.read(2).above);
+    assert(!a.read(2).above);
     equal(c.records.get(3).state, 'excluded');
     // More space must not spontaneously reinsert a temporary floating window.
     a.windows.get(2).minWidth = 0;
@@ -300,6 +302,31 @@ test('preflight rejection preserves existing tile and creates only per-window fl
     assert(!a.read(2).above);
     equal(a.restores.includes(2), false);
 });
+test('floating app exceptions never impose always-on-top or activate helper windows', () => {
+    for (const appId of ['floating-one.desktop', 'floating-two.desktop']) {
+        const {clock, adapter: a, controller: c} = setup([[1, {appId}], [2, {}]]);
+        c.floatingApps = [`app-id:${appId}`, 'app-id:helper.desktop']; c.schedule(0); clock.run();
+        equal(c.records.get(1).reason, 'app-exception');
+        a.focusedId = () => 1;
+        let activations = 0; a.focusWindow = () => activations++;
+        const original = {...a.read(1).rect};
+        a.add(3, {appId: 'helper.desktop', wmClass: 'arbitrary-osd', rect: {x: 100, y: 100, width: 360, height: 72}});
+        c.event({kind: 'changed', id: 3}); clock.run();
+        equal(c.records.get(3).reason, 'app-exception'); equal(a.read(1).rect, original);
+        assert(!a.read(1).above && !a.read(3).above);
+        equal(a.aboveCalls.length, 0); equal(activations, 0);
+        c.event({kind: 'geometry', id: 1}); c.event({kind: 'focus', id: 1}); clock.run();
+        c.stop(); equal(a.aboveCalls.length, 0);
+    }
+});
+test('explicit user always-on-top choices survive floating rules, fullscreen and disable', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {appId: 'float.desktop', above: true}], [2, {}]]);
+    c.floatingApps = ['app-id:float.desktop']; c.schedule(0); clock.run();
+    assert(a.read(1).above);
+    a.windows.get(2).fullscreen = true; c.event({kind: 'changed', id: 2}); clock.run();
+    assert(a.read(1).above); equal(a.aboveCalls.length, 0);
+    c.stop(); assert(a.read(1).above); equal(a.aboveCalls.length, 0);
+});
 test('dialogs, transients and special windows never get moved or raised', () => {
     const {adapter: a, controller: c} = setup([[1, {normal: false}], [2, {transient: true}],
         [3, {overrideRedirect: true}], [4, {skipTaskbar: true}], [5, {sticky: true}]]);
@@ -307,11 +334,11 @@ test('dialogs, transients and special windows never get moved or raised', () => 
     assert([...a.windows.values()].every(d => !d.above));
     c.stop();
 });
-test('fixed-size normal window floats above tiles without resizing', () => {
+test('fixed-size normal window floats without changing native stacking or size', () => {
     const {adapter: a, controller: c} = setup([[1, {resizable: false}]]);
     equal(c.records.get(1).reason, 'fixed-size');
     equal(a.moves.length, 0);
-    assert(a.read(1).above);
+    assert(!a.read(1).above);
     c.stop();
     assert(!a.read(1).above);
 });
@@ -320,7 +347,7 @@ test('unresponsive resize has at most two corrections then restores and floats',
     equal(a.moves.length, 3);
     equal(c.records.get(1).reason, 'resize-not-converged');
     equal(a.read(1).rect, {x: 50, y: 80, width: 700, height: 500});
-    assert(a.read(1).above);
+    assert(!a.read(1).above);
     equal(clock.jobs.size, 0);
     c.stop();
 });
@@ -621,15 +648,15 @@ test('grab yields to user geometry and stop does not undo the manual move', () =
     equal(a.read(1).rect, manual);
     equal(a.restores.length, 0);
 });
-test('floating overlay yields to fullscreen and returns afterward', () => {
+test('floating windows keep native stacking through fullscreen transitions', () => {
     const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {minWidth: 3000}]]);
-    assert(a.read(2).above);
+    assert(!a.read(2).above);
     a.windows.get(1).fullscreen = true;
     c.event({kind: 'changed', id: 1}); clock.run();
     assert(!a.read(2).above);
     a.windows.get(1).fullscreen = false;
     c.event({kind: 'changed', id: 1}); clock.run();
-    assert(a.read(2).above);
+    assert(!a.read(2).above);
     c.stop();
 });
 test('manual always-on-top decision is preserved', () => {
@@ -787,7 +814,7 @@ test('automatic floating exception follows a window between workspaces', () => {
     select(second);
     equal(c.records.get(4).state, 'floating');
     assert(!ids(c.tree).includes(4));
-    assert(a.read(4).above);
+    assert(!a.read(4).above);
     c.stop();
 });
 test('app exceptions use exact namespaced IDs, without titles or cross-namespace matching', () => {
@@ -812,7 +839,7 @@ test('floating shortcut restores normal geometry and overrides app default for o
     c.toggleWindow(1); clock.run();
     equal(c.records.get(1).state, 'floating');
     equal(a.read(1).rect.width, 700);
-    assert(a.read(1).above);
+    assert(!a.read(1).above);
     c.floatingApps = ['wm-class:Editor']; c.schedule(0); clock.run();
     c.toggleWindow(1); clock.run();
     equal(c.records.get(1).state, 'tiled');

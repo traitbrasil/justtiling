@@ -124,7 +124,7 @@ export default class JustTiling extends Extension {
                 this._preview?.sync();
                 this._numberedSwap?.sync();
             };
-            this._adapter.log('info', 'Trait JustTiling 0.19.2 loaded.');
+            this._adapter.log('info', 'Trait JustTiling 0.19.3 loaded.');
             this._syncEnabled(false);
         } catch (error) {
             this.disable();

@@ -20,7 +20,7 @@
 
 Trait JustTiling arranges your windows as you open and close them, giving each workspace its own layout. Adjust a split, swap two windows, or keep an application floating. Your desktop stays yours to shape.
 
-**Current version: 0.19.2.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
+**Current version: 0.19.3.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
 
 ## Make room for the way you work
 
