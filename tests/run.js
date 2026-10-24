@@ -1,3 +1,4 @@
+import {PRESETS, presetFrame, layoutBarGeometry, layoutHit, insideBar} from '../src/layout/presets.js';
 import {balancedLayout, insertBalanced} from '../src/layout/balance.js';
 import {pinnedLayout, withoutReservations} from '../src/pinning.js';
 import {NumberChoice} from '../src/numberChoice.js';
@@ -350,6 +351,34 @@ test('dialogs, transients and special windows never get moved or raised', () => 
         [3, {overrideRedirect: true}], [4, {skipTaskbar: true}], [5, {sticky: true}]]);
     equal(a.moves.length, 0);
     assert([...a.windows.values()].every(d => !d.above));
+    c.stop();
+});
+const chooserMetadata = {gtkAppId: 'org.gnome.Nautilus', gtkApplicationPath: '/org/gnome/Nautilus',
+    gtkBusName: ':1.13', gtkWindowPath: null};
+test('unparented Nautilus portal selectors stay untouched while main Files windows tile', () => {
+    const {adapter: a, controller: c} = setup([[1, {...chooserMetadata,
+        gtkWindowPath: '/org/gnome/Nautilus/window/1'}], [2, chooserMetadata]]);
+    equal(c.records.get(1).state, 'tiled');
+    equal(c.records.get(2).reason, 'auxiliary-window');
+    equal(a.moves.filter(move => move.id === 2).length, 0);
+    equal(a.read(2).rect, {x: 50, y: 80, width: 700, height: 500});
+    c.toggleWindow(2);
+    equal(c.records.get(2).state, 'excluded');
+    c.stop();
+});
+test('missing GTK metadata and non-Nautilus windows do not imply a file selector', () => {
+    const base = {alive: true, normal: true, inScope: true, movable: true, resizable: true};
+    for (const changes of [{gtkAppId: 'org.other.App'}, {gtkApplicationPath: null},
+        {gtkBusName: null}, {gtkBusName: 'org.gnome.Nautilus'}, {gtkWindowPath: undefined},
+        {gtkWindowPath: '/org/gnome/Nautilus/window/2'}])
+        equal(exclusion({...base, ...chooserMetadata, ...changes}), null);
+    equal(exclusion({...base, gtkWindowPath: null}), null);
+});
+test('Nautilus application exceptions still explicitly float its main windows', () => {
+    const {controller: c, clock} = setup([[1, {...chooserMetadata, appId: 'org.gnome.Nautilus.desktop',
+        gtkWindowPath: '/org/gnome/Nautilus/window/1'}]]);
+    c.floatingApps = ['app-id:org.gnome.Nautilus.desktop']; c.schedule(0); clock.run();
+    equal(c.records.get(1).state, 'floating');
     c.stop();
 });
 test('fixed-size normal window floats without changing native stacking or size', () => {
@@ -2313,5 +2342,157 @@ test('portrait screens and application minimum sizes remain valid when landscape
     const tree = insertBalanced({id: 1}, 2, specs, area, gaps);
     const plan = checkPlan(tree, area, specs, gaps);
     assert(plan.frames.size === 2, 'A shape preference must never reject a feasible native minimum');
+});
+
+test('preset palette geometry uses the work area and keeps hit tests outside gaps', () => {
+    const geometry = layoutBarGeometry({x: -1600, y: 30, width: 1600, height: 900});
+    equal(geometry.zones.length, 14);
+    for (const zone of geometry.zones) equal(layoutHit({x: zone.hit.x + zone.hit.width / 2,
+        y: zone.hit.y + zone.hit.height / 2}, geometry)?.id, zone.id);
+    equal(layoutHit({x: geometry.frame.x + 2, y: geometry.frame.y + 2}, geometry), null);
+    assert(insideBar({x: geometry.frame.x + 2, y: geometry.frame.y + 2}, geometry));
+    equal(layoutHit({x: NaN, y: 0}, geometry), null);
+    equal(layoutBarGeometry({x: 0, y: 0, width: 100, height: 100}), null);
+    for (const width of [300, 700, 2000]) {
+        const bar = layoutBarGeometry({x: 0, y: 0, width, height: 800});
+        assert(bar.frame.x >= 0 && bar.frame.x + bar.frame.width <= width);
+    }
+});
+test('preset frames preserve outer gaps and share inner gaps without overlap', () => {
+    const area = {x: -21, y: 31, width: 1701, height: 1003}, gaps = {inner: 15, outer: 15};
+    for (const preset of PRESETS) {
+        const frames = preset.regions.map(region => presetFrame(region, area, gaps));
+        for (const frame of frames) {
+            assert(frame.width > 0 && frame.height > 0 && frame.x >= area.x + 15 && frame.y >= area.y + 15);
+            assert(frame.x + frame.width <= area.x + area.width - 15 && frame.y + frame.height <= area.y + area.height - 15);
+            for (const other of frames) if (other !== frame) assert(frame.x + frame.width <= other.x ||
+                other.x + other.width <= frame.x || frame.y + frame.height <= other.y || other.y + other.height <= frame.y);
+        }
+    }
+});
+function assistantDrag(count = 2, id = 1, swap = true) {
+    const context = balancedSetup(count), {controller: c, adapter: a} = context;
+    c.layoutAssistant = true; c.dragSwap = swap;
+    c.event({kind: 'grab-begin', id, grab: {kind: 'move', pointer: true}});
+    assert(c.drag);
+    a.windows.get(id).rect.x += 100;
+    c.assistantVisible = c.assistantReady = true;
+    return context;
+}
+test('dropping on a preset pins only the dragged application and preserves learning', () => {
+    const {controller: c, adapter: a, clock} = assistantDrag();
+    let saves = 0, learned = 0; c.onPinnedLayouts = () => saves++; c.onLearnedLayouts = () => learned++;
+    const zone = layoutBarGeometry(a.area()).zones.find(item => item.id === 'quarters:0');
+    const preview = c.presetPlan(zone.region);
+    assert(preview && Object.keys(c.pinnedLayouts).length === 0, 'Preview must not persist a pin');
+    a.point = {x: zone.hit.x + 3, y: zone.hit.y + 3};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(a.read(1).rect, presetFrame(zone.region, a.area(), c.gaps));
+    equal(saves, 1); equal(learned, 0); assert(!c.drag);
+    c.stop();
+});
+test('assistant supports a sole tiled window and restores cancelled preset drags', () => {
+    for (const choose of [true, false]) {
+        const {controller: c, adapter: a, clock} = assistantDrag(1);
+        const original = {...c.drag.frame};
+        const zone = layoutBarGeometry(a.area()).zones[0];
+        a.point = choose ? {x: zone.hit.x + 3, y: zone.hit.y + 3} : {x: 5, y: 600};
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        equal(c.records.get(1).state, 'tiled');
+        if (!choose) equal(a.read(1).rect, original);
+        equal(Object.keys(c.pinnedLayouts).length, choose ? 1 : 0); c.stop();
+    }
+});
+test('assistant drops in empty space restore the original grid without changing saved preferences', () => {
+    for (const count of [1, 2]) for (const swap of [true, false]) for (const visible of [true, false]) {
+        const {controller: c, adapter: a, clock} = assistantDrag(count, 1, swap);
+        const frame = {...c.drag.frame}, tree = c.drag.tree;
+        const pins = JSON.stringify(c.pinnedLayouts), learning = JSON.stringify(c.learnedLayouts);
+        c.assistantVisible = c.assistantReady = visible;
+        a.point = {x: a.area().x - 20, y: a.area().y + 200};
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        equal(c.records.get(1).state, 'tiled'); equal(a.read(1).rect, frame);
+        assert(c.tree === tree && !c.drag && c.records.get(1).override !== 'floating');
+        equal(JSON.stringify(c.pinnedLayouts), pins); equal(JSON.stringify(c.learnedLayouts), learning);
+        c.stop();
+    }
+});
+test('assistant still swaps on a valid target and retains a pinned region on cancelled drops', () => {
+    const {controller: c, adapter: a, clock} = assistantDrag(2);
+    const target = {...a.read(2).rect}; a.point = center(target);
+    c.event({kind: 'grab-end', id: 1}); clock.run(); equal(a.read(1).rect, target);
+    c.togglePin(1); clock.run();
+    const pins = JSON.stringify(c.pinnedLayouts), frame = {...a.read(1).rect};
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: true}});
+    assert(c.drag); a.windows.get(1).rect.x += 100;
+    a.point = {x: -100, y: -100};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(a.read(1).rect, frame); equal(JSON.stringify(c.pinnedLayouts), pins);
+    equal(c.records.get(1).state, 'tiled'); c.stop();
+});
+test('Esc-like restored geometry and bar gaps never pin or accidentally swap', () => {
+    for (const cancel of [true, false]) {
+        const {controller: c, adapter: a, clock} = assistantDrag();
+        const original = c.drag.tree, frame = {...c.drag.frame};
+        const bar = layoutBarGeometry(a.area()), zone = bar.zones[0];
+        if (cancel) a.windows.get(1).rect = frame;
+        a.point = cancel ? {x: zone.hit.x + 3, y: zone.hit.y + 3} : {x: bar.frame.x + 2, y: bar.frame.y + 2};
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        equal(Object.keys(c.pinnedLayouts).length, 0); assert(c.tree === original);
+        equal(a.read(1).rect, frame); c.stop();
+    }
+});
+test('occupied pin regions and incompatible minima are unavailable without changing preferences', () => {
+    const {controller: c, adapter: a, clock} = assistantDrag();
+    const goal = {x: 0, y: 0, width: 0.5, height: 1};
+    c.drag = null; c.pinnedLayouts = {'app-id:app2.desktop': goal}; c.pinCache.clear(); c.schedule(0); clock.run();
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: true}}); assert(c.drag);
+    a.windows.get(1).rect.x += 100; c.assistantVisible = c.assistantReady = true;
+    const zone = layoutBarGeometry(a.area()).zones[0];
+    assert(!c.presetFits(zone.region) && !c.presetPlan(zone.region));
+    a.point = {x: zone.hit.x + 3, y: zone.hit.y + 3};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(c.pinnedLayouts, {'app-id:app2.desktop': goal}); equal(c.records.get(1).state, 'tiled');
+    c.stop();
+});
+test('preset release rejects changed workspace, geometry, settings and pins', () => {
+    for (const change of ['area', 'pins', 'disabled', 'workspace']) {
+        const {controller: c, adapter: a, clock} = assistantDrag();
+        const zone = layoutBarGeometry(a.area()).zones[0]; assert(c.presetPlan(zone.region));
+        if (change === 'area') a.workarea.width -= 100;
+        if (change === 'pins') c.pinnedLayouts = {'app-id:outside.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+        if (change === 'disabled') c.layoutAssistant = false;
+        if (change === 'workspace') a.activeWorkspace = () => 'another-workspace';
+        a.point = {x: zone.hit.x + 3, y: zone.hit.y + 3};
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        assert(!Object.hasOwn(c.pinnedLayouts, 'app-id:app1.desktop')); c.stop();
+    }
+});
+
+test('layout assistant remains independent of drag swapping', () => {
+    const {controller: c, adapter: a, clock} = assistantDrag();
+    c.drag = null; c.dragSwap = false;
+    a.windows.get(1).rect.x -= 100;
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: true}});
+    assert(c.drag?.assistantOnly);
+    a.windows.get(1).rect.x += 100; c.assistantVisible = c.assistantReady = true;
+    const zone = layoutBarGeometry(a.area()).zones[0];
+    a.point = {x: zone.hit.x + 3, y: zone.hit.y + 3};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(a.read(1).rect, presetFrame(zone.region, a.area(), c.gaps));
+    equal(Object.keys(c.pinnedLayouts).length, 1); c.stop();
+});
+test('a preset smaller than the native minimum cannot pin or float the source', () => {
+    const {controller: c, adapter: a, clock} = balancedSetup(1);
+    a.windows.get(1).minWidth = 900; c.schedule(0); clock.run();
+    c.layoutAssistant = true;
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: true}});
+    assert(c.drag);
+    a.windows.get(1).rect.x += 100; c.assistantVisible = c.assistantReady = true;
+    const zone = layoutBarGeometry(a.area()).zones[0];
+    assert(!c.presetFits(zone.region) && !c.presetPlan(zone.region));
+    a.point = {x: zone.hit.x + 3, y: zone.hit.y + 3};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); equal(Object.keys(c.pinnedLayouts).length, 0); c.stop();
 });
 print(`\n${passed} tests passed. Pure GJS tests: no compositor, D-Bus session or window mutation.`);

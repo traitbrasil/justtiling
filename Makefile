@@ -1,10 +1,13 @@
-.PHONY: test-corners test test-shell test-preferences check check-api package test-package submission
+.PHONY: test-native-chooser test-corners test test-shell test-preferences check check-api package test-package submission
 
 test:
 	gjs -m tests/run.js
 
 test-shell:
 	python3 tools/test-shell.py
+
+test-native-chooser:
+	python3 tools/test-native-chooser.py
 
 test-package:
 	gjs -m tests/package-lookup-smoke.js

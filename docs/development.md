@@ -17,6 +17,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make check` | Parse ES modules and validate schemas without loading the extension |
 | `make test` | Pure layout/controller tests using simulated windows and clocks |
 | `make check-api` | Check installed Meta/Shell/St 51 interfaces without starting a compositor |
+| `make test-native-chooser` | Installed Nautilus OpenFile/SaveFile versus main Files window in headless GNOME, a private D-Bus broker and temporary profile; never connects to the desktop session |
 | `make test-shell` | Isolated integration with real GLib/Meta and memory settings, replacing Shell UI with doubles; runs in Portuguese and English |
 | `make test-preferences` | Real GTK/Adwaita in private Broadway, memory settings, both languages, and the English preview |
 | `make test-package` | Read-only installed-package query smoke tests |
@@ -24,7 +25,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.26.1 pure suite has 196 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.27.2 pure suite has 210 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -36,6 +37,7 @@ The 0.26.1 pure suite has 196 tests. Integration checks complement those tests; 
 | Native integration | `src/shellAdapter.js` bridges Meta/Shell state and signals into plain data |
 | Rules and identity | `src/rules.js`, `processInfo.js`, `packageIdentity.js`, and `packageLookup.js` handle exact application rules and optional helper identification |
 | Keyboard | `src/keybindings.js` and `shortcutOverrides.js` register actions, handle conflicts, and journal reversible system bindings |
+| Layout palette | `src/layout/presets.js` shares geometry and hit tests between `layoutBar.js` and the controller; `SwapPreview` owns their single drag-only pointer timer |
 | Pinning | `src/pinning.js` reserves explicit app regions, uses empty BSP leaves for unoccupied space, and relaxes saved sizes without changing the profiles when constraints require it |
 | Learning | `src/learning.js` validates local normalized profiles and scores feasible insertion candidates |
 | Shell UI | `src/indicator.js`, `focusBorder.js`, and `swapPreview.js` provide the panel menu and native actor decorations. The swap preview samples the pointer only during a tile drag and shares validation with the final drop |
@@ -54,7 +56,7 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.26.1.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.27.2.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
 Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 

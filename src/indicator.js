@@ -5,7 +5,7 @@ import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {appIdentities, exclusion, matchesApp, setAppException} from './rules.js';
+import {appIdentities, exclusion, isNautilusAuxiliary, matchesApp, setAppException} from './rules.js';
 import {learningMatch} from './learning.js';
 import {Connections} from './resources.js';
 
@@ -104,8 +104,8 @@ export class Indicator {
         return this.adapter.read(id);
     }
     canSetRule(data) {
-        return data?.alive && data.normal && !data.transient && !data.sticky && !data.overrideRedirect &&
-            !data.skipTaskbar && data.inScope && appIdentities(data).length > 0;
+        return data?.alive && data.normal && !data.transient && !isNautilusAuxiliary(data) &&
+            !data.sticky && !data.overrideRedirect && !data.skipTaskbar && data.inScope && appIdentities(data).length > 0;
     }
 
     update() {

@@ -37,7 +37,7 @@ export const wm = {
 
 export let actionMode = 1;
 export let modalCount = 0;
-export const uiGroup = {children: new Set(), add_child(child) { child.parent = this; this.children.add(child); }};
+export const uiGroup = {set_child_above_sibling(child, sibling) { if (!this.children.has(child) || !this.children.has(sibling)) throw Error('Missing UI child'); }, children: new Set(), add_child(child) { child.parent = this; this.children.add(child); }};
 export let failGrab = false;
 export function setFailGrab(value) { failGrab = value; }
 export function pushModal(actor, params) {

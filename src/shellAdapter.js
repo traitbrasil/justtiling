@@ -101,7 +101,9 @@ export class ShellAdapter {
         for (const name of ['workspace-changed', 'shown', 'notify::mapped',
             'notify::minimized', 'notify::fullscreen', 'notify::maximized-horizontally',
             'notify::maximized-vertically', 'notify::wm-class', 'notify::gtk-application-id',
-            'notify::window-type', 'notify::resizeable', 'notify::on-all-workspaces'])
+            'notify::window-type', 'notify::resizeable', 'notify::on-all-workspaces',
+            'notify::gtk-unique-bus-name', 'notify::gtk-application-object-path',
+            'notify::gtk-window-object-path'])
             signals.add(win, name, () => {
                 this.emit('changed', id); this.traceWindow(win, name);
             });
@@ -151,6 +153,9 @@ export class ShellAdapter {
                 event, id: win.get_stable_sequence(), pid, lineage,
                 wmClass: win.get_wm_class(), wmInstance: win.get_wm_class_instance(),
                 gtkAppId: win.get_gtk_application_id(), sandboxId: win.get_sandboxed_app_id(),
+                gtkBusName: win.get_gtk_unique_bus_name(),
+                gtkApplicationPath: win.get_gtk_application_object_path(),
+                gtkWindowPath: win.get_gtk_window_object_path(),
                 appId: app?.get_id() ?? null, windowBacked: app?.is_window_backed() ?? null,
                 transientFor: win.get_transient_for()?.get_stable_sequence() ?? null,
                 type: Object.keys(Meta.WindowType).find(key => Meta.WindowType[key] === win.get_window_type()) ?? win.get_window_type(),
@@ -221,6 +226,9 @@ export class ShellAdapter {
             maximized: win.get_maximize_flags() !== 0,
             movable: win.allows_move(), resizable: win.allows_resize(), above: win.is_above(),
             ...identity,
+            gtkBusName: win.get_gtk_unique_bus_name(),
+            gtkApplicationPath: win.get_gtk_application_object_path(),
+            gtkWindowPath: win.get_gtk_window_object_path(),
             rect, ...limits,
         };
     }

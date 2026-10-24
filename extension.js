@@ -42,6 +42,7 @@ export default class JustTiling extends Extension {
             this._controller.debug = this._settings.get_boolean('debug');
             this._adapter.traceWindows = this._controller.debug;
             this._controller.resizeSplits = this._settings.get_boolean('resize-splits');
+            this._controller.layoutAssistant = this._settings.get_boolean('layout-assistant');
             this._controller.dragSwap = this._settings.get_boolean('drag-swap');
             this._controller.insertionSide = this._settings.get_string('new-window-side');
             this._controller.preserveFocusedWindow = this._settings.get_boolean('preserve-focused-window');
@@ -107,6 +108,7 @@ export default class JustTiling extends Extension {
                     this._controller.floatingApps = this._settings.get_strv('floating-apps');
                     this._controller.debug = this._settings.get_boolean('debug');
                     this._controller.resizeSplits = this._settings.get_boolean('resize-splits');
+                    this._controller.layoutAssistant = this._settings.get_boolean('layout-assistant');
                     this._controller.dragSwap = this._settings.get_boolean('drag-swap');
                     this._controller.insertionSide = this._settings.get_string('new-window-side');
                     this._controller.preserveFocusedWindow = this._settings.get_boolean('preserve-focused-window');
@@ -139,7 +141,7 @@ export default class JustTiling extends Extension {
                 this._preview?.sync();
                 this._numberedSwap?.sync();
             };
-            this._adapter.log('info', 'Trait JustTiling 0.23.0 loaded.');
+            this._adapter.log('info', `Trait JustTiling ${this.metadata['version-name']} loaded.`);
             this._syncEnabled(false);
         } catch (error) {
             this.disable();
@@ -189,6 +191,7 @@ export default class JustTiling extends Extension {
         if (this._controller) {
             this._controller.onStateChanged = null;
             this._controller.onLearnedLayouts = null;
+            this._controller.onPinnedLayouts = null;
         }
         this._conflictNotice?.destroy();
         this._numberedSwap?.destroy();

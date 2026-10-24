@@ -3,12 +3,24 @@ export function exclusion(data) {
     if (!data?.alive) return 'destroyed';
     if (!data.normal) return 'window-type';
     if (data.transient) return 'transient';
+    if (isNautilusAuxiliary(data)) return 'auxiliary-window';
     if (data.overrideRedirect || data.skipTaskbar) return 'special-window';
     if (data.sticky) return 'sticky';
     if (!data.inScope) return 'outside-target';
     if (data.fullscreen || data.minimized) return 'special-state';
     if (!data.movable || !data.resizable) return 'fixed-size';
     return null;
+}
+
+// Nautilus 51's portal chooser is an AdwWindow, not an ApplicationWindow.
+// GTK exports its application and bus, but no per-window action object.
+// Main Files windows do export that object. Require the complete application
+// metadata: a missing window path alone is not evidence for other applications.
+export function isNautilusAuxiliary(data) {
+    return data?.gtkAppId === 'org.gnome.Nautilus' &&
+        data.gtkApplicationPath === '/org/gnome/Nautilus' &&
+        typeof data.gtkBusName === 'string' && /^:\d+\.\d+$/.test(data.gtkBusName) &&
+        data.gtkWindowPath === null;
 }
 
 // Highlighting is independent of tiling eligibility and application identity.

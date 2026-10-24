@@ -1,3 +1,4 @@
+import {layoutBarGeometry, presetFrame} from '../src/layout/presets.js';
 // Isolated integration: real GLib, GSettings(memory), Meta typelib and Mtk;
 // fake Shell globals/windows. NEVER import this into a real GNOME Shell.
 import GLib from 'gi://GLib';
@@ -82,6 +83,9 @@ class Window extends Signals {
     get_wm_class() { return 'local.test.App'; }
     get_wm_class_instance() { return 'local.test.App'; }
     get_gtk_application_id() { return null; }
+    get_gtk_unique_bus_name() { return null; }
+    get_gtk_application_object_path() { return null; }
+    get_gtk_window_object_path() { return null; }
     get_sandboxed_app_id() { return null; }
     get_window_type() { return Meta.WindowType.NORMAL; }
     get_transient_for() { return null; }
@@ -124,6 +128,9 @@ assert(Main.wm.bindings.get('toggle-tiling').settings.get_strv('toggle-tiling')[
 assert(Main.wm.bindings.get('toggle-floating').settings.get_strv('toggle-floating')[0] === '<Super>g', 'Default floating shortcut must be Super+G');
 assert(Main.panel.indicators.size === 1, 'Panel menu must be attached');
 assert(w1.frame.width === 1570, 'Adapter must tile first window');
+assert(migrationSettings.get_boolean('round-window-corners') && w1.actor.effects.has('justtiling-rounded-corners'),
+    'New installations must apply rounded corners by default');
+migrationSettings.set_boolean('round-window-corners', false);
 const firstMoves = w1.moves;
 const w2 = new Window(2, 3000);
 windows.push(w2); display.emit('window-created', w2);
@@ -430,6 +437,19 @@ assert(previews()[0].opacity > 0 && previews()[0].opacity < 255 &&
     'Preview must be translucent, accent-colored and non-interactive');
 assert(previews()[0].width === w5.frame.width && previews()[0].height === w5.frame.height,
     'Preview must cover the receiving frame');
+const palettes = () => [...borderWidgets].filter(widget => widget.name === 'justtiling-layout-bar');
+const layoutPreviews = () => [...borderWidgets].filter(widget => widget.name === 'justtiling-layout-preview');
+assert(palettes().length === 1 && !palettes()[0].reactive, 'Dragging must reveal a non-reactive preset palette');
+const paletteZone = layoutBarGeometry(ext._adapter.area()).zones[0];
+pointer = {x: paletteZone.hit.x + 3, y: paletteZone.hit.y + 3}; await wait(80);
+assert(previews().length === 0 && layoutPreviews().length === 1 &&
+    Object.keys(JSON.parse(settings.get_string('pinned-layouts')).apps).length === 0,
+    'Hover must replace the swap overlay with a destination preview without saving a pin');
+settings.set_boolean('layout-assistant', false);
+assert(palettes().length === 0 && layoutPreviews().length === 0, 'The optional palette must hide immediately');
+settings.set_boolean('layout-assistant', true);
+pointer = {x: beforeSwap5.x + beforeSwap5.width / 2, y: beforeSwap5.y + 100}; await wait(80);
+assert(palettes().length === 1 && previews().length === 1, 'Leaving the bar must retain ordinary swap behavior');
 pointer = {x: 1, y: 1}; await wait(80);
 assert(previews().length === 0, 'Leaving compatible tiles must remove the preview');
 pointer = {x: beforeSwap5.x + beforeSwap5.width / 2, y: beforeSwap5.y + 100}; await wait(80);
@@ -477,15 +497,17 @@ display.emit('grab-op-begin', w1, Meta.GrabOp.MOVING_UNCONSTRAINED);
 pointer = {x: w5.frame.x + 100, y: w5.frame.y + 100};
 display.emit('grab-op-end', w1, Meta.GrabOp.MOVING_UNCONSTRAINED); await wait(200);
 assert(JSON.stringify(w1.frame) === JSON.stringify(cancelFrame), 'Cancelled move swapped the windows');
+settings.set_boolean('layout-assistant', false);
 settings.set_boolean('drag-swap', false); await wait(100);
 assert(!ext._controller.dragSwap, 'Preferences must still disable drag swapping');
 display.emit('grab-op-begin', w5, Meta.GrabOp.MOVING);
 const floated = {...w5.frame, x: 100, y: 110}; w5.frame = floated; w5.emit('position-changed');
 display.emit('grab-op-end', w5, Meta.GrabOp.MOVING); await wait(500);
 assert(!w5.above && JSON.stringify(w5.frame) === JSON.stringify(floated),
-    'Disabling drag swaps should preserve the original floating behavior');
+    'Disabling both drag features should preserve the original floating behavior');
 settings.set_boolean('drag-swap', true); await wait(100);
 assert(ext._controller.dragSwap, 'Preferences must still restore drag swapping');
+settings.set_boolean('layout-assistant', true);
 w5.emit('unmanaging'); windows.splice(windows.indexOf(w5), 1); await wait(200);
 assert(w5.handlers.size === 0 && w1.frame.width === 1570, 'Resized window closure leaked ownership');
 
@@ -716,7 +738,7 @@ ext._adapter.log = oldLog;
 // Optional rounded corners decorate every application window independently of focus/tiling.
 const roundedName = 'justtiling-rounded-corners';
 assert(!settings.get_boolean('round-window-corners') && ext._corners.windows.size === 0,
-    'Rounded corners must default off without retaining native actor observers');
+    'Explicitly disabling rounded corners must release native actor observers');
 const roundFloat = new Window(98), roundOther = new Window(99), roundPopup = new Window(100);
 roundFloat.get_wm_class = () => 'round.floating';
 roundOther.workspace = otherWorkspace;
@@ -923,6 +945,32 @@ assert(openingFloat.actor.handlers.size === 0 && ext._border.widget === null,
 settings.set_strv('floating-apps', beforeOpeningRules);
 display.focus_window = w1; display.emit('notify::focus-window');
 
+// A parentless Nautilus portal chooser shares the main window's application identity.
+const filesMain = new Window(120), filesChooser = new Window(121);
+for (const win of [filesMain, filesChooser]) {
+    win.get_gtk_application_id = () => 'org.gnome.Nautilus';
+    win.get_gtk_unique_bus_name = () => ':1.13';
+    win.get_gtk_application_object_path = () => '/org/gnome/Nautilus';
+}
+filesMain.get_gtk_window_object_path = () => '/org/gnome/Nautilus/window/1';
+for (const win of [filesMain, filesChooser]) {
+    windows.push(win); display.emit('window-created', win);
+}
+await wait(600);
+assert(ext._controller.records.get(120).state === 'tiled' && filesMain.moves > 0,
+    'Main Files window must tile with the same app identity as its chooser');
+assert(ext._controller.records.get(121).reason === 'auxiliary-window' && filesChooser.moves === 0,
+    'Unparented chooser must never move or consume a grid slot');
+display.focus_window = filesChooser; display.emit('notify::focus-window');
+button.menu.open();
+assert(!appRuleItem.sensitive && !floatingItem.sensitive && ext._border.actor === filesChooser.actor,
+    'Chooser must retain focus decoration without allowing an accidental whole-app exception');
+button.menu.close();
+for (const win of [filesChooser, filesMain]) {
+    win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1);
+}
+display.focus_window = w1; display.emit('notify::focus-window');
+
 // Preferences and modal dialogs receive a border without entering the grid.
 const preferencesDialog = new Window(96);
 preferencesDialog.get_window_type = () => Meta.WindowType.DIALOG;
@@ -1089,6 +1137,36 @@ ext._settings.set_strv('floating-apps', previousFloatingApps);
 ext.disable();
 assert(Main.modalCount === 0 && borderWidgets.size === 0 && display.handlers.size === 0,
     'Maximization test must leave no observers or UI resources');
+// A real native grab/drop signal must persist the preset through the shared pin setting.
+windows.splice(0, windows.length, new Window(110));
+const paletteWindow = windows[0];
+ext = new JustTiling(); ext.enable(); await wait(300);
+display.focus_window = paletteWindow; display.emit('notify::focus-window');
+display.emit('grab-op-begin', paletteWindow, Meta.GrabOp.MOVING);
+assert(ext._controller.drag, 'A sole compatible tile must support preset dragging');
+paletteWindow.frame = {...paletteWindow.frame, x: paletteWindow.frame.x + 100}; paletteWindow.emit('position-changed');
+const soloFrame = {...ext._controller.drag.frame};
+pointer = {x: 5, y: 600}; ext._preview.sync();
+display.emit('grab-op-end', paletteWindow, Meta.GrabOp.MOVING); await wait(100);
+assert(ext._controller.records.get(110).state === 'tiled' &&
+    JSON.stringify(paletteWindow.frame) === JSON.stringify(soloFrame),
+    'Releasing a sole full-area tile outside the palette must restore its original grid frame');
+assert(palettes().length === 0 && layoutPreviews().length === 0 && ext._preview.timer === null,
+    'Cancelled preset drags must clean up palette, preview and pointer timer');
+display.emit('grab-op-begin', paletteWindow, Meta.GrabOp.MOVING);
+paletteWindow.frame = {...paletteWindow.frame, x: paletteWindow.frame.x + 100}; paletteWindow.emit('position-changed');
+const dropZone = layoutBarGeometry(ext._adapter.area()).zones[0];
+pointer = {x: dropZone.hit.x + 3, y: dropZone.hit.y + 3}; ext._preview.sync();
+assert(palettes().length === 1 && layoutPreviews().length === 1, 'Preset drop must have a live destination preview');
+const presetExpected = presetFrame(dropZone.region, ext._adapter.area(), ext._controller.gaps);
+display.emit('grab-op-end', paletteWindow, Meta.GrabOp.MOVING); await wait(100);
+assert(Object.keys(JSON.parse(ext._settings.get_string('pinned-layouts')).apps).length === 1 &&
+    JSON.stringify(paletteWindow.frame) === JSON.stringify(presetExpected), 'Native drop must persist and apply the selected pin');
+assert(palettes().length === 0 && layoutPreviews().length === 0 && ext._preview.timer === null,
+    'Ending the drag must remove all preset chrome and stop pointer sampling');
+ext._settings.set_string('pinned-layouts', '{"version":1,"apps":{}}');
+ext.disable();
+assert(Main.uiGroup.children.size === 0 && borderWidgets.size === 0, 'Palette teardown must leave no UI resources');
 // A previous UUID activated later must suspend the new extension as well.
 ext = new JustTiling(); ext.enable(); await wait(300);
 Main.extensionManager.extensions.set('just@trait.com.br', {state: 1});

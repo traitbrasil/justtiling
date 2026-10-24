@@ -2,7 +2,7 @@
 
 [Home](../README.md) · [Português](../README.pt-BR.md) · [Website](https://trait.li/just)
 
-Start with installation, then learn the controls that fit your workflow. These guides describe **0.26.1**, for **GNOME Shell 51 with one logical monitor**. The first GNOME Extensions submission is in preparation.
+Start with installation, then learn the controls that fit your workflow. These guides describe **0.27.2**, for **GNOME Shell 51 with one logical monitor**. The first GNOME Extensions submission is in preparation.
 
 ## Use Trait JustTiling
 

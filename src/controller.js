@@ -6,6 +6,7 @@ import {learningIdentity, learningMatch, normalizedFrame, uniqueLearningKey} fro
 import {beginDrag, finishDrag, swapTiles, directionalNeighbor} from './layout/drag.js';
 import {beginResize, finishResize, sameSpecs} from './layout/resize.js';
 
+import {dragMoved, insideBar, layoutBarGeometry, layoutHit, presetFrame} from './layout/presets.js';
 import {balancedLayout, comfortableLearning, insertBalanced} from './layout/balance.js';
 import {pinnedLayout, withoutReservations} from './pinning.js';
 
@@ -37,6 +38,9 @@ export class Controller {
         this.onStateChanged = null;
         this.resizeSplits = true;
         this.dragSwap = true;
+        this.layoutAssistant = false;
+        this.assistantVisible = false;
+        this.assistantReady = false;
         this.drag = null;
         this.resize = null;
         this.pinnedLayouts = Object.create(null);
@@ -99,7 +103,7 @@ export class Controller {
             return;
         } else if (kind === 'grab-begin' && r && ['tiled', 'preparing', 'floating'].includes(r.state)) {
             if (this.drag && this.drag.id !== id) this.cancelDrag('drag-context-changed');
-            if (grab?.kind === 'move' && grab.pointer && this.dragSwap && r.state === 'tiled' &&
+            if (grab?.kind === 'move' && grab.pointer && (this.dragSwap || this.layoutAssistant) && r.state === 'tiled' &&
                 this.beginDrag(r)) return;
             if (grab?.kind === 'resize' && this.resizeSplits && r.state === 'tiled' &&
                 this.beginSplitResize(r, grab.edges)) return;
@@ -528,6 +532,7 @@ export class Controller {
         const data = this.adapter.read(context.id);
         return this.adapter.monitorCount() === 1 &&
             this.domain === context.domain && this.tree === context.tree &&
+            (context.pins === undefined || context.pins === JSON.stringify(this.pinnedLayouts)) &&
             !exclusion(data) && data.ready && !data.maximized &&
             sameRect(this.adapter.area(), context.area) &&
             this.gaps.inner === context.gaps.inner && this.gaps.outer === context.gaps.outer &&
@@ -574,9 +579,16 @@ export class Controller {
         const data = this.adapter.read(r.id);
         if (exclusion(data) || !data.ready || data.maximized) return false;
         const frames = new Map(ids(this.tree).map(id => [id, this.adapter.read(id)?.rect]));
-        const context = beginDrag(this.tree, r.id, frames, this.adapter.area(), this.layoutSpecs(), this.gaps);
+        let context = beginDrag(this.tree, r.id, frames, this.adapter.area(), this.layoutSpecs(), this.gaps);
+        if (!context && this.layoutAssistant && ids(this.tree).length === 1) {
+            const area = this.adapter.area(), specs = this.layoutSpecs(), plan = solve(this.tree, area, specs, this.gaps);
+            if (plan && sameRect(data.rect, plan.frames.get(r.id), 1))
+                context = {tree: this.tree, id: r.id, frame: {...data.rect}, area: {...area}, gaps: {...this.gaps}, specs, plan};
+        }
         if (!context) return false;
-        this.drag = {...context, domain: this.domain, rules: [...this.floatingApps]};
+        this.drag = {...context, domain: this.domain, rules: [...this.floatingApps],
+            pins: JSON.stringify(this.pinnedLayouts), presetPlans: new Map(),
+            assistantOnly: !this.dragSwap || ids(this.tree).length < 2};
         r.grabbed = true;
         r.request = null;
         if (this.timer !== null) this.clock.cancel(this.timer);
@@ -596,6 +608,70 @@ export class Controller {
         }
     }
 
+    presetFits(region) {
+        const context = this.drag;
+        if (!context || !this.layoutAssistant) return false;
+        const data = this.adapter.read(context.id), spec = context.specs.get(context.id);
+        const key = data && learningIdentity(data);
+        if (!key || !spec || (!learningMatch(data, this.pinnedLayouts) && Object.keys(this.pinnedLayouts).length >= 128)) return false;
+        const rect = presetFrame(region, context.area, context.gaps);
+        if (rect.width < spec.minWidth || rect.height < spec.minHeight || rect.width > spec.maxWidth || rect.height > spec.maxHeight) return false;
+        const goal = normalizedFrame(rect, context.area, context.gaps);
+        if (!goal) return false;
+        const profile = learningMatch(data, this.pinnedLayouts);
+        for (const [id, pinned] of this.pinGoals()) {
+            if (id === context.id || learningMatch(this.adapter.read(id), this.pinnedLayouts) === profile) continue;
+            if (goal.x < pinned.x + pinned.width - 1e-6 && pinned.x < goal.x + goal.width - 1e-6 &&
+                goal.y < pinned.y + pinned.height - 1e-6 && pinned.y < goal.y + goal.height - 1e-6) return false;
+        }
+        return true;
+    }
+
+    presetPlan(region) {
+        const context = this.drag;
+        if (!this.running || this.suspended || !context ||
+            (this.adapter.activeWorkspace && this.adapter.activeWorkspace() !== context.domain) ||
+            !this.validLayoutContext(context) || !this.presetFits(region)) return null;
+        const cacheKey = JSON.stringify(region);
+        if (context.presetPlans.has(cacheKey)) return context.presetPlans.get(cacheKey);
+        const rect = presetFrame(region, context.area, context.gaps), goal = normalizedFrame(rect, context.area, context.gaps);
+        const profile = learningMatch(this.adapter.read(context.id), this.pinnedLayouts);
+        const goals = new Map([...this.pinGoals()].filter(([id]) => id !== context.id &&
+            learningMatch(this.adapter.read(id), this.pinnedLayouts) !== profile));
+        goals.set(context.id, goal);
+        const next = pinnedLayout(withoutReservations(this.tree), goals, context.area, context.specs, context.gaps,
+            (part, area) => this.preferredBalance(part, area, context.specs, {inner: context.gaps.inner, outer: 0}));
+        const plan = solve(next, context.area, context.specs, context.gaps);
+        const result = plan && sameRect(plan.frames.get(context.id), rect, 1) ? {tree: next, goal} : null;
+        context.presetPlans.set(cacheKey, result);
+        return result;
+    }
+
+    finishPreset(context, region) {
+        const result = this.assistantReady ? this.presetPlan(region) : null;
+        this.drag = null;
+        this.learningPending = null;
+        if (!result) {
+            this.tree = context.tree;
+            this.adapter.notice(N_("This layout region is unavailable for this window."));
+        } else {
+            const data = this.adapter.read(context.id), key = learningIdentity(data);
+            const profile = learningMatch(data, this.pinnedLayouts), apps = {...this.pinnedLayouts};
+            if (profile) delete apps[profile];
+            apps[key] = result.goal;
+            this.pinnedLayouts = apps;
+            if (!this.pinOwners.has(this.domain)) this.pinOwners.set(this.domain, new Map());
+            this.pinOwners.get(this.domain).set(key, context.id);
+            this.tree = result.tree;
+            this.pinCache.clear();
+            this.balancePending.delete(this.domain);
+            this.onPinnedLayouts?.(apps);
+            this.adapter.notice(N_("Application pinned. Preferred position and size saved."));
+        }
+        for (const id of ids(this.tree)) this.records.get(id).request = null;
+        this.schedule(0);
+    }
+
     previewDrag(point) {
         const context = this.drag;
         if (!this.running || this.suspended || !context || !this.dragSwap) return null;
@@ -605,10 +681,17 @@ export class Controller {
         return result && result.target !== context.id ? result.target : null;
     }
 
+    restoreDrag(context) {
+        this.drag = null;
+        this.tree = context.tree;
+        for (const id of ids(this.tree)) this.records.get(id).request = null;
+        this.schedule(0);
+    }
+
     endDrag() {
         const context = this.drag;
         if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
-        if (!this.dragSwap || !this.validLayoutContext(context)) {
+        if ((!this.dragSwap && !this.layoutAssistant) || !this.validLayoutContext(context)) {
             this.cancelDrag('drag-context-changed');
             return;
         }
@@ -616,9 +699,18 @@ export class Controller {
         let point = null;
         try { point = this.adapter.pointer?.(); }
         catch (error) { this.adapter.log('warn', `Drop pointer unavailable: ${error}`); }
+        const region = this.layoutAssistant && this.assistantVisible && dragMoved(context, this.adapter.read(context.id)?.rect) &&
+            layoutHit(point, layoutBarGeometry(context.area));
+        if (region) { this.finishPreset(context, region.region); return; }
+        if (this.layoutAssistant && this.assistantVisible && insideBar(point, layoutBarGeometry(context.area))) {
+            this.restoreDrag(context);
+            return;
+        }
+        if (context.assistantOnly) { this.restoreDrag(context); return; }
         const result = finishDrag(context, this.adapter.read(context.id).rect, point);
         if (!result) {
-            this.cancelDrag('drag-no-compatible-target');
+            if (this.layoutAssistant) this.restoreDrag(context);
+            else this.cancelDrag('drag-no-compatible-target');
             return;
         }
         this.drag = null;

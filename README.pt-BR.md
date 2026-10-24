@@ -20,7 +20,7 @@
 
 A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos, com um layout independente por workspace. Ajuste uma divisão, troque duas janelas ou mantenha um aplicativo flutuante. Você escolhe como trabalhar.
 
-**Versão atual: 0.26.1.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
+**Versão atual: 0.27.2.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
 
 ## Um espaço que acompanha seu trabalho
 
@@ -44,7 +44,7 @@ Requer **GNOME Shell 51**, um monitor lógico e as ferramentas `git`, `make`, `g
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
+gnome-extensions install --force dist/trait-justtiling-0.27.2.zip
 ```
 
 **Encerre e inicie a sessão novamente.** Depois:
@@ -55,6 +55,8 @@ gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Os guias detalhados estão em inglês: [instalação e atualização](docs/installation.md), [uso diário](docs/user-guide.md) e [configuração](docs/configuration.md).
+
+Ao arrastar uma janela organizada, uma barra opcional oferece layouts pré-definidos. Passe sobre uma área para visualizar o destino e solte para fixar o aplicativo nela. Fora da barra, a troca por arraste continua funcionando. A barra pode ser desativada nas Preferências.
 
 ## Atalhos padrão
 
@@ -82,3 +84,5 @@ Consulte a [documentação](docs/README.md) e o [guia de contribuição](CONTRIB
 Criado por **[Dudu Broering](https://trait.li/dudu)** na **[Trait](https://www.trait.com.br/)**. Conheça o **[Trait Just](https://trait.li/just)** ou entre em contato: **[just@trait.com.br](mailto:just@trait.com.br)**.
 
 Código aberto sob [GPL-3.0-or-later](LICENSE).
+
+Seletores de arquivos fornecidos pelo Nautilus ficam flutuantes automaticamente, mesmo sem uma janela principal associada. O Arquivos continua participando do grid. Se ele já estiver na lista de aplicativos sempre flutuantes, remova essa exceção nas Preferências para permitir sua organização.

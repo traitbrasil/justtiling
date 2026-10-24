@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 import Gettext from 'gettext';
 export class Extension {
     constructor() {
+        this.metadata = {'version-name': 'test'};
         this.uuid = 'justtiling@trait.com.br';
         Gettext.bindtextdomain('trait-justtiling', GLib.getenv('TRAIT_TEST_LOCALEDIR'));
     }

@@ -9,6 +9,10 @@
       <default>true</default>
       <summary>Manage windows while the extension is loaded</summary>
     </key>
+    <key name="layout-assistant" type="b">
+      <default>true</default>
+      <summary>Show optional layout presets during native window dragging</summary>
+    </key>
     <key name="hide-panel-icon" type="b">
       <default>false</default>
       <summary>Hide the panel indicator without disabling tiling or shortcuts</summary>
@@ -68,7 +72,7 @@
       <summary>Focus border and window corner radius in logical pixels</summary>
     </key>
     <key name="round-window-corners" type="b">
-      <default>false</default><summary>Round application window corners to match the focus border</summary>
+      <default>true</default><summary>Round application window corners to match the focus border</summary>
     </key>
     <key name="focus-border" type="b">
       <default>true</default>

@@ -30,7 +30,7 @@ New eligible windows that open maximized are unmaximized before entering the gri
 
 - **Resize a shared edge:** resize the window normally, then release. The neighboring split adjusts after release, respecting window constraints.
 - **Swap windows:** drag a tiled window over another tile. A translucent overlay in the GNOME accent color highlights a compatible receiving window. Release to exchange their positions without changing the split sizes. The preview clears when there is no valid target or the drag is canceled.
-- **Float a window:** use Super+G. Moving outside a valid tile destination or resizing an outer edge can also release a window from tiling.
+- **Float a window:** use Super+G. Resizing an outer edge can also release a window from tiling. With the layout palette disabled, dropping outside a valid tile destination retains the original drag-to-float behavior.
 
 During a native drag, neighboring windows wait. The extension does not continuously rearrange the grid under the pointer. Split resizing and drag swapping can be toggled independently in Preferences. The panel menu keeps the temporary tiled/floating action between separators, with application pinning and floating rules in their own group.
 
@@ -78,7 +78,7 @@ Set **Focus border width (px)** in **Preferences → Gaps** to make the focus bo
 
 ## Rounded window corners
 
-Enable **Round window corners** in Preferences to visually round application windows with the same radius used by the focus border. The option is off by default. Set **Corner radius (px)** in the **Gaps** section: 0–64 logical pixels, initially 8. Changes apply immediately to the focus border and forced rounding without rearranging windows. Zero makes the focus border square and removes the forced rounding effect. GNOME does not expose a universal window-corner-radius preference; this value is manual. It applies to tiled and floating windows, including unfocused windows, independently of automatic tiling and focus highlighting.
+Enable **Round window corners** in Preferences to visually round application windows with the same radius used by the focus border. The option is on by default. Set **Corner radius (px)** in the **Gaps** section: 0–64 logical pixels, initially 8. Changes apply immediately to the focus border and forced rounding without rearranging windows. Zero makes the focus border square and removes the forced rounding effect. GNOME does not expose a universal window-corner-radius preference; this value is manual. It applies to tiled and floating windows, including unfocused windows, independently of automatic tiling and focus highlighting.
 
 Maximized, fullscreen and minimized windows have no rounding effect. Restoring a window reapplies it. Menus, tooltips, notifications and desktop surfaces are excluded. Turning the option off or disabling the extension removes the effect immediately and restores the original rendering. Window geometry and application settings are unchanged. Existing transparency inside the frame is preserved. The original exterior border/shadow is replaced by a soft rounded shadow while the option is enabled. Frames with translucent native margins suppress the additional shadow to avoid a second rectangular halo. Transparency and faint shadows drawn inside the application frame itself remain under application control; native corners that are already more rounded cannot be filled back in by this visual mask.
 
@@ -119,3 +119,13 @@ gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Automatic layouts favor wider window shapes over narrow, full-height columns. Learned sizes remain preferred when they leave usable shapes for the other applications. If a learned region would squeeze other windows into tall strips, it can yield temporarily so windows can be stacked in wider rows. This never changes the stored learning; it can be restored after windows close. Explicitly pinned regions keep their stronger priority. Application minimum sizes can still require portrait shapes when no wider arrangement fits.
+
+## Dragging into a preset layout
+
+With **Show layout presets when dragging** enabled in Preferences, dragging a tiled window reveals a palette near the top center of the work area. It offers halves, thirds, quarters, a wider center column, and horizontal halves. Move onto one of the small regions to preview the destination in the GNOME accent color, then release to pin that application's position and size there. A sole tiled window also supports this palette.
+
+Only the selected application is pinned. Other windows keep using the normal adaptive grid. The saved pin uses the same local application rules, notifications, menu option, Super+Y shortcut, and Preferences list as ordinary pinning. Repeating the gesture updates that application's saved region. Existing floating exceptions remain excluded.
+
+Regions that cannot accommodate the application's size limits or overlap another application's fixed region are unavailable. Releasing on an unavailable region or an empty part of the palette returns the window to the grid without modifying pins. Esc cancels the native drag. Leaving the palette keeps the usual swap preview. Releasing over a compatible window swaps them; releasing without a valid destination restores the original grid position and size, including for a sole window filling the work area. Pins and learning remain unchanged on cancellation; the palette never captures keyboard or pointer input. The palette can be disabled independently of drag swapping, and works when drag swapping is disabled.
+
+The palette and destination preview disappear when dragging ends, tiling pauses, the overview or lock screen opens, or the extension is disabled. The assistant adjusts only the chosen window's pin when explicitly dropped on a valid region; hovering does not change geometry or stored preferences.

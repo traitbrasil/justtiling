@@ -115,6 +115,9 @@ assert(settings.get_string('new-window-side') === 'right', 'Combo must save righ
 settings.set_string('new-window-side', 'left');
 assert(ui.controls['new-window-side'].selected === 0, 'External insertion side must update combo');
 assert(ui.controls['preserve-focused-window'].active, 'Focus size preservation must default on');
+assert(ui.controls['layout-assistant'].active, 'Layout presets must be enabled by default and optional');
+assert(ui.controls['layout-assistant'].title === (english ? 'Show layout presets when dragging' : 'Mostrar layouts ao arrastar'),
+    'Layout assistant option must be translated');
 assert(!ui.controls['hide-panel-icon'].active, 'The panel icon must remain visible by default');
 assert(ui.controls['hide-panel-icon'].title === (english ? 'Hide the panel icon' : 'Ocultar ícone do painel'),
     'Panel icon preference must follow the session language');
@@ -144,10 +147,10 @@ ui.controls['corner-radius'].value = -1;
 assert(settings.get_int('corner-radius') === 0, 'Square corners must be allowed');
 settings.reset('corner-radius');
 
-assert(!ui.controls['round-window-corners'].active, 'Rounded corners must be opt-in');
+assert(ui.controls['round-window-corners'].active, 'Rounded corners must default on');
 assert(ui.controls['round-window-corners'].title === (english ? 'Round window corners' : 'Arredondar cantos das janelas'),
     'Rounded corner setting must be translated');
-for (const key of ['hide-panel-icon', 'tiling-enabled', 'resize-splits', 'drag-swap', 'focus-border', 'round-window-corners', 'preserve-focused-window', 'learn-layouts']) {
+for (const key of ['layout-assistant', 'hide-panel-icon', 'tiling-enabled', 'resize-splits', 'drag-swap', 'focus-border', 'round-window-corners', 'preserve-focused-window', 'learn-layouts']) {
     ui.controls[key].active = false;
     assert(!settings.get_boolean(key), `${key} was not saved`);
     settings.set_boolean(key, true);

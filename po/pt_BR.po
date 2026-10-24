@@ -348,3 +348,15 @@ msgstr "Ocultar ícone do painel"
 
 msgid "Tiling and keyboard shortcuts keep working while the icon is hidden."
 msgstr "A organização das janelas e os atalhos continuam funcionando com o ícone oculto."
+
+msgid "Drop on a preset region to pin the application. Dragging outside the bar keeps the usual behavior."
+msgstr "Solte sobre uma área do layout para fixar o aplicativo. Fora da barra, o arraste mantém o comportamento habitual."
+
+msgid "Drop on a region to pin"
+msgstr "Solte em uma área para fixar"
+
+msgid "Show layout presets when dragging"
+msgstr "Mostrar layouts ao arrastar"
+
+msgid "This layout region is unavailable for this window."
+msgstr "Esta área do layout está indisponível para esta janela."

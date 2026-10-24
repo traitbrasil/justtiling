@@ -17,12 +17,13 @@ Changes are saved automatically. They belong to the current desktop user. The Ab
 | Automatic tiling | On | Organizes compatible windows |
 | Resize splits on release | On | Adjusts shared splits after a resize |
 | Drag-and-drop swaps | On | Exchanges windows when dropped on another tile |
+| Show layout presets when dragging | On | Optional drag palette for pinning a tiled application to a preset region |
 | Hide the panel icon | Off | Hides the indicator immediately; tiling and shortcuts continue working |
 | Highlight the focused window | On | Uses the GNOME accent color, independently of tiling |
 | Pinned application regions | Empty | Explicit local position and size priorities; removable individually or all at once |
 | Focus border width | 2 px | Draws inward; adjustable from 1 to 8, independent of gaps and corner radius |
 | Corner radius | 8 px | Shared by the focus border and forced rounding; 0–64, with zero disabling forced rounding |
-| Round window corners | Off | Visually rounds tiled and floating applications to match the focus border |
+| Round window corners | On | Visually rounds tiled and floating applications to match the focus border |
 | Prefer splitting other windows | On | Uses the previous focus as an insertion tie-breaker; equal areas and saved preferences take priority |
 | New window position | Left | Prefers insertion before the active tile |
 | Layout learning | On | Learns successful manual resizing and swaps |
@@ -36,6 +37,8 @@ Learned applications and always-floating application lists start collapsed to ke
 ## Application exceptions
 
 The extension ships with [30 default floating application identifiers](default-floating-apps.md). A customized list, including an explicitly empty one, takes precedence over those defaults. New rules added through the panel menu remain local preferences; they do not change the source code or defaults for other users.
+
+File dialogs normally remain outside the grid. Nautilus portal selectors are also recognized when they appear as unparented normal windows: their GTK application metadata is present but their per-window action object is absent. Main Files windows retain their own window object and continue to tile. This uses no window titles or language-specific matching. The application-wide exception action is unavailable for these auxiliary windows, to avoid excluding Files by accident. If Files was previously added to the always-floating list, remove that entry in Preferences to allow its main windows back into the grid; existing application exceptions are preserved.
 
 Rules match application identifiers rather than document titles. Recognized application children can inherit the rule. On Debian/Ubuntu, an optional, read-only installed-package lookup helps identify otherwise unrecognized helper windows. Missing tools or ambiguous matches leave the helper unassociated.
 

@@ -20,6 +20,7 @@ export function buildPreferences(window, settings, metadata = {}) {
     for (const [key, title] of [
         ['hide-panel-icon', _("Hide the panel icon")],
         ['tiling-enabled', _("Tile windows automatically")],
+        ['layout-assistant', _("Show layout presets when dragging")],
         ['resize-splits', _("Resize splits when releasing a window edge")],
         ['drag-swap', _("Swap windows by dragging and dropping")],
         ['focus-border', _("Highlight the focused window")],
@@ -27,7 +28,8 @@ export function buildPreferences(window, settings, metadata = {}) {
         ['preserve-focused-window', _("Prefer splitting other windows")],
     ]) {
         const row = new Adw.SwitchRow({title,
-            subtitle: key === 'hide-panel-icon' ? _("Tiling and keyboard shortcuts keep working while the icon is hidden.") :
+            subtitle: key === 'layout-assistant' ? _("Drop on a preset region to pin the application. Dragging outside the bar keeps the usual behavior.") :
+                key === 'hide-panel-icon' ? _("Tiling and keyboard shortcuts keep working while the icon is hidden.") :
                 key === 'focus-border' ? _("A border using the GNOME accent color.") :
                 key === 'round-window-corners' ? _("Applies to tiled and floating windows. Maximized and fullscreen windows keep their original appearance.") :
                 key === 'preserve-focused-window' ?

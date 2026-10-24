@@ -20,7 +20,7 @@
 
 Trait JustTiling arranges your windows as you open and close them, giving each workspace its own layout. Adjust a split, swap two windows, or keep an application floating. Your desktop stays yours to shape.
 
-**Current version: 0.26.1.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
+**Current version: 0.27.2.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
 
 ## Make room for the way you work
 
@@ -47,7 +47,7 @@ You need **GNOME Shell 51**, one logical monitor, and the development tools `git
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/trait-justtiling-0.26.1.zip
+gnome-extensions install --force dist/trait-justtiling-0.27.2.zip
 ```
 
 **Log out and log back in**, then enable the extension:
@@ -58,6 +58,8 @@ gnome-extensions prefs justtiling@trait.com.br
 ```
 
 Open a few windows to start tiling. Use the panel menu to change behavior or access Preferences. [Installation and updates →](docs/installation.md)
+
+Drag a tiled window to reveal optional layout presets. Hover over a region to preview it, then drop to pin the application there; ordinary drag swapping remains available outside the palette. Disable the palette in Preferences whenever you prefer.
 
 ## Your keyboard, your layout
 
@@ -87,3 +89,5 @@ The interface follows your session language: Portuguese for Portuguese sessions,
 Created by **[Dudu Broering](https://trait.li/dudu)** at **[Trait](https://www.trait.com.br/)**. Visit **[Trait Just](https://trait.li/just)** or contact **[just@trait.com.br](mailto:just@trait.com.br)**.
 
 Free and open source under [GPL-3.0-or-later](LICENSE).
+
+Nautilus file selectors float automatically, including unparented portal windows, while ordinary Files windows remain eligible for tiling. Remove any existing Files application exception in Preferences to allow its main windows into the grid.

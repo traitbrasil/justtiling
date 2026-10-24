@@ -2,6 +2,7 @@
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {LayoutBar} from './layoutBar.js';
 import {Connections} from './resources.js';
 
 // Observe the pointer only during a native tile drag. Never grab input or move
@@ -13,6 +14,7 @@ export class SwapPreview {
         this.signals = new Connections();
         this.targetSignals = new Connections();
         this.timer = null;
+        this.layoutBar = new LayoutBar(adapter, controller);
         this.widget = null;
         this.actor = null;
         this.destroyed = false;
@@ -44,10 +46,11 @@ export class SwapPreview {
         if (this.destroyed) return;
         try {
             if (!this.controller.running || this.controller.suspended || !this.controller.drag ||
-                !this.controller.dragSwap || Main.overview.visible || Main.sessionMode.isLocked ||
+                (!this.controller.dragSwap && !this.controller.layoutAssistant) || Main.overview.visible || Main.sessionMode.isLocked ||
                 !Main.sessionMode.hasWindows || this.adapter.monitorCount() !== 1) {
                 this.stopTimer();
                 this.clear();
+                this.layoutBar.clear();
                 return;
             }
             if (this.timer === null) {
@@ -57,7 +60,9 @@ export class SwapPreview {
                     return GLib.SOURCE_REMOVE;
                 });
             }
-            const id = this.controller.previewDrag(this.adapter.pointer());
+            const point = this.adapter.pointer();
+            if (this.layoutBar.sync(point)) { this.clear(); return; }
+            const id = this.controller.previewDrag(point);
             const visual = id === null ? null : this.adapter.windowVisual(id);
             if (!visual?.actor) { this.clear(); return; }
             const {actor, frame, buffer} = visual;
@@ -90,6 +95,7 @@ export class SwapPreview {
         } catch (error) {
             this.stopTimer();
             this.clear();
+            this.layoutBar.clear();
             if (!this.warned) this.adapter.log('warn', `Swap preview: ${error}`);
             this.warned = true;
         }
@@ -99,6 +105,7 @@ export class SwapPreview {
         this.destroyed = true;
         this.stopTimer();
         this.signals.clear();
+        this.layoutBar.destroy();
         this.clear();
     }
 }

@@ -348,3 +348,15 @@ msgstr ""
 
 msgid "Tiling and keyboard shortcuts keep working while the icon is hidden."
 msgstr ""
+
+msgid "Drop on a preset region to pin the application. Dragging outside the bar keeps the usual behavior."
+msgstr ""
+
+msgid "Drop on a region to pin"
+msgstr ""
+
+msgid "Show layout presets when dragging"
+msgstr ""
+
+msgid "This layout region is unavailable for this window."
+msgstr ""

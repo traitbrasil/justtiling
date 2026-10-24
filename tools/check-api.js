@@ -15,7 +15,8 @@ const methods = {
         'unmaximize', 'make_above', 'unmake_above', 'is_above', 'get_window_type',
         'get_transient_for', 'is_override_redirect', 'is_skip_taskbar',
         'is_on_all_workspaces', 'is_fullscreen', 'allows_move', 'allows_resize',
-        'get_pid', 'get_wm_class', 'get_wm_class_instance', 'get_gtk_application_id', 'get_sandboxed_app_id'],
+        'get_pid', 'get_wm_class', 'get_wm_class_instance', 'get_gtk_application_id', 'get_sandboxed_app_id',
+        'get_gtk_unique_bus_name', 'get_gtk_application_object_path', 'get_gtk_window_object_path'],
     Display: ['list_all_windows', 'get_n_monitors'],
     Workspace: ['get_work_area_for_monitor'],
     WorkspaceManager: ['get_active_workspace', 'get_n_workspaces', 'get_workspace_by_index'],
@@ -46,7 +47,8 @@ for (const [name, names] of Object.entries(signals)) {
 const properties = GObject.Object.list_properties.call(Meta.Window).map(p => p.name);
 for (const property of ['mapped', 'minimized', 'fullscreen', 'above', 'resizeable',
     'maximized-horizontally', 'maximized-vertically', 'wm-class', 'gtk-application-id',
-    'window-type', 'on-all-workspaces']) {
+    'window-type', 'on-all-workspaces', 'gtk-unique-bus-name',
+    'gtk-application-object-path', 'gtk-window-object-path']) {
     if (!properties.includes(property)) throw new Error(`Missing Window property ${property}`);
     count++;
 }
@@ -67,7 +69,7 @@ for (const method of ['add_child', 'get_child_transform', 'set_child_above_sibli
     if (typeof Meta.WindowActor.prototype[method] !== 'function') throw new Error(`Missing actor ${method}`);
     count++;
 }
-for (const method of ['set_position', 'set_size', 'set_scale', 'show', 'destroy']) {
+for (const method of ['set_position', 'set_size', 'set_scale', 'set_child_above_sibling', 'show', 'destroy']) {
     if (typeof St.Widget.prototype[method] !== 'function') throw new Error(`Missing St.Widget.${method}`);
     count++;
 }
@@ -95,7 +97,7 @@ for (const [type, methods] of [[Clutter.Grab, ['is_revoked']],
     for (const method of methods)
         if (typeof type.prototype[method] !== 'function') throw new Error(`Missing selection API ${method}`);
 }
-for (const value of [Shell.ActionMode.POPUP, Clutter.ActorAlign.CENTER,
+for (const value of [Clutter.AnimationMode.EASE_OUT_QUAD, Shell.ActionMode.POPUP, Clutter.ActorAlign.CENTER,
     Clutter.ModifierType.SUPER_MASK, Clutter.ModifierType.MOD1_MASK, Clutter.KEY_0, Clutter.KEY_KP_0])
     if (!Number.isInteger(value)) throw new Error('Missing numbered selection constant');
 print('Numbered selection input and overlay API contract OK.');
