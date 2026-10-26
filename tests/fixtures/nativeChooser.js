@@ -2,9 +2,13 @@
 // Installed only in a temporary headless GNOME profile by test-native-chooser.py.
 import GLib from 'gi://GLib';
 import {exclusion} from './src/rules.js';
+import JustTiling from './runtime.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-export default class Probe {
+export default class Probe extends JustTiling {
     enable() {
+        super.enable();
+        Main.overview.hide();
         this.timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
             const windows = global.display.list_all_windows()
                 .filter(win => win.get_gtk_application_id() === 'org.gnome.Nautilus');
@@ -18,11 +22,14 @@ export default class Probe {
                     gtkApplicationPath: win.get_gtk_application_object_path(),
                     gtkWindowPath: win.get_gtk_window_object_path(),
                 };
-                return {...data, reason: exclusion(data)};
+                const record = this._controller.records.get(win.get_stable_sequence());
+                const effect = win.get_compositor_private()?.get_effect('justtiling-rounded-corners');
+                return {...data, reason: exclusion(data), state: record?.state,
+                    rounded: Boolean(effect), painted: effect?.warned === false};
             });
             console.log(`CHOOSER_PROBE ${JSON.stringify(rows)}`);
             return GLib.SOURCE_CONTINUE;
         });
     }
-    disable() { if (this.timer) GLib.source_remove(this.timer); }
+    disable() { if (this.timer) GLib.source_remove(this.timer); super.disable(); }
 }

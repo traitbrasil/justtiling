@@ -19,7 +19,7 @@ assert metadata['settings-schema'] == 'org.gnome.shell.extensions.justtiling', '
 assert 'version' not in metadata, 'EGO controls the numeric submission version'
 assert re.fullmatch(r'(?![. ]+$)[a-zA-Z0-9 .]{1,16}', metadata['version-name'])
 assert metadata['url'] == 'https://trait.li/just'
-assert metadata['shell-version'] == ['51'], 'Claim only the locally validated GNOME version'
+assert metadata['shell-version'] == ['50', '51'], 'Claim only the locally validated GNOME version'
 assert metadata['gettext-domain'] == DOMAIN
 with tempfile.TemporaryDirectory(prefix='trait-catalog-check-') as tmp:
     compile_catalogs(Path(tmp) / 'locale')

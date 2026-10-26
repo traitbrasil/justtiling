@@ -16,7 +16,7 @@
     <text x="66" y="230" fill="#c2d8d8" font-size="21">Automatic window tiling for GNOME.</text>
     <text x="66" y="263" fill="#c2d8d8" font-size="21">A workspace that moves with you.</text>
     <rect x="64" y="315" width="273" height="37" rx="18" fill="#26434a"/>
-    <text x="85" y="340" fill="#d5efea" font-size="15">GNOME 51  /  Open source</text>
+    <text x="85" y="340" fill="#d5efea" font-size="15">GNOME 50 + 51  /  Open source</text>
     <g transform="translate(663 48)">
       <rect width="553" height="300" rx="17" fill="#101d24" stroke="#45636a"/>
       <rect x="16" y="16" width="307" height="268" rx="10" fill="url(#tile)" stroke="#60dfc3" stroke-width="3"/>

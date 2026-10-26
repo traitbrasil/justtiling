@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Read-only introspection. Never construct Meta.Context, Shell.Global or windows.
-import Meta from 'gi://Meta?version=51';
+import Meta from 'gi://Meta';
 import GObject from 'gi://GObject';
 import Mtk from 'gi://Mtk';
 import Shell from 'gi://Shell';
@@ -78,7 +78,7 @@ if (matrix.get_value(0, 0) !== 1) throw new Error('Missing matrix value access')
 count++;
 const r = new Mtk.Rectangle({x: 0, y: 0, width: 1, height: 1});
 if (r.width !== 1) throw new Error('Mtk.Rectangle unavailable');
-print(`Meta/Shell/St 51 contract OK: ${count} methods, signals, properties and grab operations. No compositor initialized.`);
+print(`Meta/Shell/St contract OK: ${count} methods, signals, properties and grab operations. No compositor initialized.`);
 
 for (const [type, names] of [[Shell.WindowTracker, ['get_window_app']],
     [Shell.App, ['get_id', 'is_window_backed', 'activate']],
@@ -118,19 +118,27 @@ for (const method of ['add_effect_with_name', 'remove_effect', 'get_paint_volume
 void Meta.WindowActor.prototype;
 if (!GObject.signal_lookup('resource-scale-changed', Meta.WindowActor.$gtype))
     throw new Error('Missing actor resource-scale-changed');
-for (const method of ['get_target_size', 'get_actor', 'set_uniform_float'])
+for (const method of ['get_target_size', 'get_actor'])
     if (typeof Clutter.ShaderEffect.prototype[method] !== 'function') throw new Error(`Missing shader API ${method}`);
+const {modernShader, CornerBackend} = await import('../src/cornerBackend.js');
 const {CornerEffect} = await import('../src/cornerEffect.js');
-const cornerEffect = new CornerEffect();
-cornerEffect.update({bounds: [10, 15, 700, 500], radius: 8});
-const snippet = cornerEffect.vfunc_get_static_snippet();
-if (!snippet) throw new Error('Corner effect snippet missing');
-const shadowVolume = {origin: {x: 0, y: 0, z: 0}, width: 700, height: 500,
-    get_origin() { return this.origin; }, get_width() { return this.width; }, get_height() { return this.height; },
-    set_origin(origin) { this.origin = origin; }, set_width(width) { this.width = width; }, set_height(height) { this.height = height; }};
-cornerEffect.vfunc_modify_paint_volume(shadowVolume);
-if (shadowVolume.origin.x !== -10 || shadowVolume.origin.y !== -5 || shadowVolume.width !== 740 || shadowVolume.height !== 540)
-    throw new Error('Rounded shadow paint volume did not expand correctly');
+if (modernShader) {
+    const cornerEffect = new CornerEffect();
+    cornerEffect.update({bounds: [10, 15, 700, 500], radius: 8});
+    const snippet = cornerEffect.vfunc_get_static_snippet();
+    if (!snippet) throw new Error('Corner effect snippet missing');
+    const shadowVolume = {origin: {x: 0, y: 0, z: 0}, width: 700, height: 500,
+        get_origin() { return this.origin; }, get_width() { return this.width; }, get_height() { return this.height; },
+        set_origin(origin) { this.origin = origin; }, set_width(width) { this.width = width; }, set_height(height) { this.height = height; }};
+    cornerEffect.vfunc_modify_paint_volume(shadowVolume);
+    if (shadowVolume.origin.x !== -10 || shadowVolume.origin.y !== -5 || shadowVolume.width !== 740 || shadowVolume.height !== 540)
+        throw new Error('Rounded shadow paint volume did not expand correctly');
+
+} else {
+    for (const method of ['add_glsl_snippet', 'get_uniform_location', 'set_uniform_float'])
+        if (typeof CornerBackend.prototype[method] !== 'function') throw new Error(`Missing legacy shader API ${method}`);
+    print('Legacy shader construction is checked inside the private compositor.');
+}
 for (const method of ['get_origin', 'get_width', 'get_height', 'set_origin', 'set_width', 'set_height'])
     if (typeof Clutter.PaintVolume.prototype[method] !== 'function') throw new Error(`Missing paint volume API ${method}`);
 print('Rounded corner native GObject class, Cogl snippet, uniforms and actor contracts OK (no compositor).');

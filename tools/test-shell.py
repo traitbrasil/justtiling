@@ -8,12 +8,17 @@ import tempfile
 from translations import compile_catalogs
 
 root = Path(__file__).resolve().parents[1]
-typelibs = list(Path('/usr/lib').glob('*/mutter-51/Meta-51.typelib'))
-typelibs += list(Path('/usr/lib').glob('mutter-51/Meta-51.typelib'))
+version = os.environ.get('TRAIT_TEST_GNOME', '51')
+if version not in ['50', '51']:
+    raise SystemExit('TRAIT_TEST_GNOME must be 50 or 51')
+# Mutter 50 packages use ABI namespace 18; Mutter 51 uses namespace 51.
+abi = '18' if version == '50' else '51'
+typelibs = list(Path('/usr/lib').glob(f'*/mutter-{abi}/Meta-{abi}.typelib'))
+typelibs += list(Path('/usr/lib').glob(f'mutter-{abi}/Meta-{abi}.typelib'))
 if not typelibs:
-    raise SystemExit('Meta 51 needed for adapter smoke test; no compositor will be started.')
-env = os.environ.copy()
+    raise SystemExit(f'Meta-{abi}.typelib not found for GNOME {version}; no compositor started.')
 runtime = str(typelibs[0].parent)
+env = os.environ.copy()
 env['GI_TYPELIB_PATH'] = runtime + ':/usr/lib/gnome-shell:' + env.get('GI_TYPELIB_PATH', '')
 env['LD_LIBRARY_PATH'] = runtime + ':/usr/lib/gnome-shell:' + env.get('LD_LIBRARY_PATH', '')
 env['GSETTINGS_BACKEND'] = 'memory'
@@ -48,6 +53,6 @@ with tempfile.TemporaryDirectory(prefix='justtiling-smoke-') as tmp:
     for language in ['pt_BR', 'en']:
         env['LANGUAGE'] = language
         env['LC_ALL'] = 'pt_BR.UTF-8'
-        print(f'Testing isolated Shell: {language}', flush=True)
+        print(f'Testing isolated Shell {version}: {language}', flush=True)
         subprocess.run(['gjs', '-m', str(stage / 'tests/shell-smoke.js'), stage.as_uri()],
                        cwd=stage, env=env, check=True, timeout=45)

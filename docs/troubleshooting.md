@@ -18,7 +18,7 @@ Disabling and enabling the extension does not reliably unload imported JavaScrip
 
 ## Windows are not being tiled
 
-Check that automatic tiling is on, the session is GNOME Shell 51, and only one logical monitor is connected. If tiling paused after a second monitor was connected, return to one monitor and resume explicitly.
+Check that automatic tiling is on, the session is GNOME Shell 50 and 51, and only one logical monitor is connected. If tiling paused after a second monitor was connected, return to one monitor and resume explicitly.
 
 Confirm that the application is not in **Always-floating applications**. Dialogs and special windows are excluded automatically. Fixed-size windows and windows that cannot fit are also left floating. Super+G cannot override those constraints.
 

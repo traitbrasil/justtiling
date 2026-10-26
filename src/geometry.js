@@ -13,7 +13,7 @@ export function clampRect(rect, area) {
     };
 }
 
-// Meta 51 core getters return internal size_hints (already scaled by Mutter).
+// Meta 50/51 core getters return internal size_hints (already scaled by Mutter).
 // Match core/constraints.c:get_size_limits: client -> frame, NOT protocol -> stage again.
 export function frameLimits(minimum, maximum, convert) {
     const [hasMin, minW, minH] = minimum;

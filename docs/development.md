@@ -2,11 +2,11 @@
 
 [Documentation](README.md) · [Contributing](../CONTRIBUTING.md)
 
-Trait JustTiling is a JavaScript/GJS extension for GNOME Shell 51, licensed under GPL-3.0-or-later. There are no npm dependencies. The published extension ZIP contains runtime modules, metadata, a license, schemas, and compiled translation catalogs; development tools and tests stay in the source repository.
+Trait JustTiling is a JavaScript/GJS extension for GNOME Shell 50 and 51, licensed under GPL-3.0-or-later. There are no npm dependencies. The published extension ZIP contains runtime modules, metadata, a license, schemas, and compiled translation catalogs; development tools and tests stay in the source repository.
 
 ## Environment
 
-For pure tests and packaging: GJS, Python 3, `make`, and `glib-compile-schemas`. The integration checks additionally require the installed Mutter/Meta and Shell 51 libraries. Preferences tests require GTK 4, libadwaita, `gtk4-broadwayd`, private Unix socket support, and an installed `pt_BR.UTF-8` locale used by the bilingual test runner.
+For pure tests and packaging: GJS, Python 3, `make`, and `glib-compile-schemas`. The integration checks additionally require the installed Mutter/Meta and Shell 50 or 51 libraries. Preferences tests require GTK 4, libadwaita, `gtk4-broadwayd`, private Unix socket support, and an installed `pt_BR.UTF-8` locale used by the bilingual test runner.
 
 Package-identity smoke tests use the local installed-package database where available. No check installs dependencies or activates the extension automatically.
 
@@ -16,8 +16,8 @@ Package-identity smoke tests use the local installed-package database where avai
 | --- | --- |
 | `make check` | Parse ES modules and validate schemas without loading the extension |
 | `make test` | Pure layout/controller tests using simulated windows and clocks |
-| `make check-api` | Check installed Meta/Shell/St 51 interfaces without starting a compositor |
-| `make test-native-chooser` | Installed Nautilus OpenFile/SaveFile versus main Files window in headless GNOME, a private D-Bus broker and temporary profile; never connects to the desktop session |
+| `make check-api` | Check installed Meta/Shell/St 50/51 interfaces without starting a compositor |
+| `make test-native-chooser` | Installed Nautilus OpenFile/SaveFile versus main Files window with the full extension and native corner effects in headless GNOME, a private D-Bus session and temporary profile; never connects to the desktop session |
 | `make test-shell` | Isolated integration with real GLib/Meta and memory settings, replacing Shell UI with doubles; runs in Portuguese and English |
 | `make test-preferences` | Real GTK/Adwaita in private Broadway, memory settings, both languages, and the English preview |
 | `make test-package` | Read-only installed-package query smoke tests |
@@ -25,7 +25,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.27.2 pure suite has 210 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.28.0 pure suite has 210 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -56,10 +56,16 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.27.2.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.28.0.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
 Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 
 For manual installation, use the [installation guide](installation.md). Before a GNOME Extensions submission, review the [official guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html). Neither building nor running the isolated suite installs or publishes the extension.
 
-The optional corner mask uses GNOME 51's `Clutter.ShaderEffect` and a configurable shared radius with the focus border. `make test-corners` compiles and renders the shipped GLSL using a private surfaceless Mesa software GLES context (EGL and GLES libraries required). It verifies corner alpha, straight edges, removal of opaque exterior outlines, rounded shadow falloff, translucent native margins (with and without focus highlighting) and synchronized animation opacity, premultiplied alpha and 100%/150%/200% scale. This complements native API introspection, pure geometry tests and lifecycle tests with Shell doubles; real GNOME visual testing is still necessary. The framebuffer-coordinate mapping credits its GPL source in `src/cornerGeometry.js`.
+The optional corner mask uses `Shell.GLSLEffect` on GNOME 50 and `Clutter.ShaderEffect` on GNOME 51, selected from native API capabilities and a configurable shared radius with the focus border. `make test-corners` compiles and renders the shipped GLSL using a private surfaceless Mesa software GLES context (EGL and GLES libraries required). It verifies corner alpha, straight edges, removal of opaque exterior outlines, rounded shadow falloff, translucent native margins (with and without focus highlighting) and synchronized animation opacity, premultiplied alpha and 100%/150%/200% scale. This complements native API introspection, pure geometry tests and lifecycle tests with Shell doubles; real GNOME visual testing is still necessary. The framebuffer-coordinate mapping credits its GPL source in `src/cornerGeometry.js`.
+
+## Testing both supported GNOME versions
+
+Use the same source checkout in separate GNOME 50 and 51 environments. Test tools default to GNOME 51; for GNOME 50, run `TRAIT_TEST_GNOME=50 make check-api test-shell`. GNOME 50 uses Mutter ABI 18; GNOME 51 uses ABI 51. The environment selector only changes test library discovery; installed extension modules use the libraries supplied by Shell.
+
+Run `make test-native-chooser` in each environment to load the full extension in a headless compositor with private settings, D-Bus and display sockets. It verifies that Files tiles, unparented OpenFile/SaveFile selectors stay excluded, and native corner effects attach without shader errors. The GNOME 50 shader must be constructed inside this compositor because `Shell.GLSLEffect` requires an initialized Shell stage. No fallback disables any feature. Run `make test-preferences` for the GTK interface and `make test-corners` for pixel-level shader checks.

@@ -2,7 +2,7 @@ import {layoutBarGeometry, presetFrame} from '../src/layout/presets.js';
 // Isolated integration: real GLib, GSettings(memory), Meta typelib and Mtk;
 // fake Shell globals/windows. NEVER import this into a real GNOME Shell.
 import GLib from 'gi://GLib';
-import Meta from 'gi://Meta?version=51';
+import Meta from 'gi://Meta';
 import Gio from 'gi://Gio';
 
 const root = ARGV[0];
