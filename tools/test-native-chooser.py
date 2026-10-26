@@ -29,6 +29,9 @@ def stop(process):
 
 
 def run_private():
+    count = int(os.environ.get('TRAIT_TEST_MONITORS', '1'))
+    if count not in [1, 2]:
+        raise ValueError('TRAIT_TEST_MONITORS must be 1 or 2')
     runtime = Path(os.environ['XDG_RUNTIME_DIR'])
     subprocess.run(['gsettings', 'set', 'org.gnome.shell', 'enabled-extensions',
                     "['chooser-probe@local']"], check=True, timeout=5)
@@ -37,9 +40,10 @@ def run_private():
     children = []
     with (runtime / 'native.log').open('w+') as log:
         try:
-            shell = subprocess.Popen(['gnome-shell', '--headless', '--wayland', '--no-x11',
-                                      '--virtual-monitor', '1280x900', '--wayland-display',
-                                      'justtiling-private'], stdout=log, stderr=log)
+            command = ['gnome-shell', '--headless', '--wayland', '--no-x11',
+                       '--virtual-monitor', '1280x900', '--wayland-display', 'justtiling-private']
+            if count == 2: command += ['--virtual-monitor', '1024x768']
+            shell = subprocess.Popen(command, stdout=log, stderr=log)
             children.append(shell)
             for _ in range(100):
                 if shell.poll() is not None:
@@ -60,6 +64,9 @@ def run_private():
                 time.sleep(0.1)
             else:
                 raise RuntimeError('Nautilus main window unavailable')
+            if count == 2:
+                children.append(subprocess.Popen(['nautilus', '--new-window', str(runtime)],
+                                                 stdout=log, stderr=log))
             for action, caller, handle in [('OpenFile', 'org.test.Upload', 'open'),
                                             ('SaveFile', 'org.test.Download', 'save')]:
                 children.append(subprocess.Popen([
@@ -75,13 +82,18 @@ def run_private():
                         rows = json.loads(line.split('CHOOSER_PROBE ', 1)[1])
                 main = [r for r in rows if r['gtkWindowPath']]
                 choosers = [r for r in rows if r['gtkWindowPath'] is None]
-                if len(main) == 1 and len(choosers) == 2 and main[0].get('state') == 'tiled' and all(r.get('rounded') and r.get('painted') for r in rows):
+                if len(main) == count and len(choosers) == 2 and all(r.get('state') == 'tiled' and r.get('inside') and r.get('menuEligible') for r in main) and (all(r['monitor'] == (0 if os.environ.get('TRAIT_TEST_PIN_MONITOR') == 'missing' else 1) for r in main) if os.environ.get('TRAIT_TEST_PIN_MONITOR') in ['1', 'missing'] else len({r['monitor'] for r in main}) == count) and all(r.get('rounded') and r.get('painted') for r in rows):
                     assert main[0]['reason'] is None, rows
                     assert all(r['normal'] and not r['transient'] and
                                r['reason'] == 'auxiliary-window' for r in choosers), rows
                     assert not re.search(r'Shader compilation|Failed to compile|Corner mapping|GLSL compile',
                                          (runtime / 'native.log').read_text()), 'Native shader error'
-                    print('Installed Nautilus/GTK: main Files window eligible; '
+                    if os.environ.get('TRAIT_TEST_PIN_MONITOR') == 'missing':
+                        assert all(not r['pinActive'] for r in rows), rows
+                        print('Disconnected preferred monitor: new windows use the primary grid without an active pin.')
+                    if os.environ.get('TRAIT_TEST_PIN_MONITOR') == '1':
+                        print('Saved monitor preference: both newly opened Files windows reached monitor 2.')
+                    print(f'Installed Nautilus/GTK: {count} independent monitor grids; main Files windows eligible; '
                           'unparented OpenFile and SaveFile excluded; full extension and native rounded-corner effects active. No titles used.')
                     return
                 time.sleep(0.1)
@@ -94,6 +106,9 @@ def run_private():
             print('\n'.join(diagnostic + last_probe)[-16000:], file=sys.stderr)
             raise
         finally:
+            if os.environ.get('TRAIT_TEST_LOG'):
+                log.flush()
+                shutil.copyfile(runtime / 'native.log', os.environ['TRAIT_TEST_LOG'])
             for child in reversed(children):
                 stop(child)
 

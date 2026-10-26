@@ -11,13 +11,13 @@ import Graphene from 'gi://Graphene';
 const methods = {
     Window: ['activate', 'get_stable_sequence', 'get_min_size', 'get_max_size', 'get_frame_rect',
         'get_compositor_private', 'get_buffer_rect', 'client_rect_to_frame_rect', 'move_resize_frame',
-        'get_workspace', 'get_monitor', 'get_maximize_flags', 'set_maximize_flags',
+        'get_workspace', 'get_monitor', 'move_frame', 'get_maximize_flags', 'set_maximize_flags',
         'unmaximize', 'make_above', 'unmake_above', 'is_above', 'get_window_type',
         'get_transient_for', 'is_override_redirect', 'is_skip_taskbar',
         'is_on_all_workspaces', 'is_fullscreen', 'allows_move', 'allows_resize',
         'get_pid', 'get_wm_class', 'get_wm_class_instance', 'get_gtk_application_id', 'get_sandboxed_app_id',
         'get_gtk_unique_bus_name', 'get_gtk_application_object_path', 'get_gtk_window_object_path'],
-    Display: ['list_all_windows', 'get_n_monitors'],
+    Display: ['list_all_windows', 'get_n_monitors', 'get_primary_monitor'],
     Workspace: ['get_work_area_for_monitor'],
     WorkspaceManager: ['get_active_workspace', 'get_n_workspaces', 'get_workspace_by_index'],
 };

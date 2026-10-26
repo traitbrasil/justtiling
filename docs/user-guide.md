@@ -66,11 +66,17 @@ Use **Preferences → Layout learning** to pause learning and use of saved profi
 
 Workspace layouts remain independent while management is active. Moving a window between workspaces updates its source and destination. Exact workspace trees are not restored across sessions; learned application preferences are stored separately.
 
-Connecting a second logical monitor pauses tiling and requests restoration. After returning to one monitor, resume explicitly using the menu or Super+T.
+Each logical monitor has its own grid, using that monitor's available work area. Mirrored displays share a single logical grid. A fullscreen window pauses only its own monitor. Connecting, disconnecting or changing the resolution of a monitor does not turn automatic tiling off. Mutter relocates windows from disconnected monitors, then the extension organizes them on their destination.
+
+Drag a tiled window to another monitor and release to insert it into that monitor's grid. The source grid closes the freed space. During the crossing, the window follows the pointer freely and the destination grid waits until release. Swaps and the layout palette operate within the originating monitor; crossing into another monitor inserts the window there rather than swapping across screens.
+
+Super+F cycles focus within the focused monitor. Super+Arrow and Super+C swap windows within that monitor's current grid. Application floating exceptions, pinned profiles and learned proportions remain shared preferences; profiles apply against each monitor's own dimensions. Learning stays disabled for an application with multiple tiled instances, including across monitors.
+
+Both GNOME workspace configurations work. With workspaces on all monitors, each monitor keeps independent layouts for each workspace. With workspaces only on the primary monitor, secondary monitor grids remain visible across primary workspace changes.
 
 ## Swap by number
 
-Press **Super+C** with a tiled window focused. All other tiles on the current workspace receive an accent-colored preview with a number in the center. Type a number to exchange those two windows; focus stays with the original window. **Esc** or the same shortcut again cancels without rearranging anything. The shortcut is configurable in Preferences.
+Press **Super+C** with a tiled window focused. All other tiles on the focused monitor and current workspace receive an accent-colored preview with a number in the center. Type a number to exchange those two windows; focus stays with the original window. **Esc** or the same shortcut again cancels without rearranging anything. The shortcut is configurable in Preferences.
 
 With ten or more destinations, type the digits in sequence. A number that is also a prefix (such as 1 when 10 is visible) waits 650 ms for another digit; Enter confirms immediately. Backspace clears the digits. Keypad digits work too. Invalid numbers do not rearrange windows. Workspace, window or layout changes cancel the selection. Windows must still fit their destination sizes.
 
@@ -100,7 +106,7 @@ Arrange a tiled window at the position and size you prefer, then enable **Pin th
 
 When application minimum sizes prevent an exact reservation, the pinned window yields space temporarily. Closing windows restores its saved region when possible. Automatic adjustments never overwrite the saved preference. Manual split resizing or swapping updates the affected pinned window's saved region after the layout settles.
 
-Pins are stored locally by application, as proportions of the work area, and survive reopening and session restarts. One tiled instance per application reserves space on each workspace; additional instances tile normally. Floating exceptions, manual floating, minimization and maximization take precedence while active, without deleting the saved pin. Rejoining the grid applies it again.
+Pins are stored locally by application, as proportions of the work area together with the preferred monitor, and survive reopening and session restarts. Reopened windows prefer that monitor; if it is disconnected, they use the primary monitor without erasing the saved destination. On any other monitor, the saved pin does not reserve space or enforce its proportions: the window participates in that monitor’s normal adaptive grid. The saved region applies again when the window is on its preferred monitor. Manual moves after opening remain possible. Pins saved before monitor preferences were supported keep their existing behavior; unpin and pin once on the desired monitor to save it. One tiled instance per application reserves space on each workspace; additional instances tile normally. Floating exceptions, manual floating, minimization and maximization take precedence while active, without deleting the saved pin. Rejoining the grid applies it again.
 
 Toggle the menu option or shortcut to unpin, or remove one or all pins in **Preferences → Pinned applications**. The list starts collapsed. **Preferences → Keyboard shortcuts** allows changing the default Super+Y shortcut; occupied shortcuts are reported instead of replacing system bindings. Empty reserved regions are never numbered swap targets.
 

@@ -3,7 +3,7 @@ import {N_} from './src/strings.js';
 import GLib from 'gi://GLib';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {readLearning, writeLearning} from './src/learning.js';
-import {Controller} from './src/controller.js';
+import {Monitors} from './src/monitors.js';
 import {ShellAdapter} from './src/shellAdapter.js';
 import {Connections} from './src/resources.js';
 import {ShortcutOverrides} from './src/shortcutOverrides.js';
@@ -32,7 +32,7 @@ export default class JustTiling extends Extension {
                     }),
                 cancel: id => GLib.source_remove(id),
             };
-            this._controller = new Controller(this._adapter, clock, this._gaps());
+            this._controller = new Monitors(this._adapter, clock, this._gaps());
             this._controller.floatingApps = this._settings.get_strv('floating-apps');
             this._controller.pinnedLayouts = readLearning(this._settings.get_string('pinned-layouts'));
             this._controller.onPinnedLayouts = apps => this._settings.set_string('pinned-layouts', writeLearning(apps));

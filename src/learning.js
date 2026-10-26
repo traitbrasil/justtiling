@@ -14,6 +14,12 @@ export function readLearning(text) {
                 !rect || !fields.every(k => Number.isFinite(rect[k]) && rect[k] >= 0 && rect[k] <= 1) ||
                 rect.width <= 0 || rect.height <= 0 || rect.x + rect.width > 1.00001 || rect.y + rect.height > 1.00001) continue;
             result[key] = Object.fromEntries(fields.map(k => [k, rect[k]]));
+            const monitor = rect.monitor;
+            if (monitor && Number.isInteger(monitor.index) && monitor.index >= 0 && monitor.index < 64) {
+                result[key].monitor = {index: monitor.index};
+                if (typeof monitor.connector === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(monitor.connector))
+                    result[key].monitor.connector = monitor.connector;
+            }
         }
     } catch (_) { /* Invalid or future data never prevents tiling. */ }
     return result;

@@ -1,13 +1,13 @@
 {
   "uuid": "justtiling@trait.com.br",
   "name": "Trait JustTiling",
-  "description": "Automatic window tiling for a single-monitor GNOME desktop. Independent workspace layouts, adjustable splits, drag-and-drop swaps with visual previews and keyboard swaps, focus highlighting, optional rounded window corners, pinned application regions, an optional drag palette for preset layouts, application-wide floating exceptions and local learning of manually preferred app positions and sizes.\n\nInterface available in English and Portuguese. Default shortcuts: Super+T to toggle tiling, Super+G to toggle the active window, Super+Y to pin or unpin an application, Super+F to cycle focus through tiled windows, Super+C to choose a numbered window for swapping, and Super+Arrow to swap windows. The arrow shortcuts temporarily replace conflicting system bindings and restore them when tiling stops. Shortcuts are configurable.\n\nOn Debian/Ubuntu, unidentified helper windows can inherit application exceptions through read-only installed-package queries. Multiple-monitor tiling is not supported.",
+  "description": "Automatic window tiling for GNOME desktops with one or more monitors. Independent grids per monitor and workspace, adjustable splits, drag-and-drop swaps with visual previews and keyboard swaps, focus highlighting, optional rounded window corners, pinned application regions, an optional drag palette for preset layouts, application-wide floating exceptions and local learning of manually preferred app positions and sizes.\n\nInterface available in English and Portuguese. Default shortcuts: Super+T to toggle tiling, Super+G to toggle the active window, Super+Y to pin or unpin an application, Super+F to cycle focus through tiled windows, Super+C to choose a numbered window for swapping, and Super+Arrow to swap windows. The arrow shortcuts temporarily replace conflicting system bindings and restore them when tiling stops. Shortcuts are configurable.\n\nOn Debian/Ubuntu, unidentified helper windows can inherit application exceptions through read-only installed-package queries. Supports GNOME workspaces on all monitors or only the primary monitor.",
   "shell-version": [
     "50",
     "51"
   ],
   "settings-schema": "org.gnome.shell.extensions.justtiling",
-  "version-name": "0.28.0",
+  "version-name": "0.29.2",
   "url": "https://trait.li/just",
   "gettext-domain": "trait-justtiling"
 }

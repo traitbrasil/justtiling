@@ -16,7 +16,7 @@ export function buildPreferences(window, settings, metadata = {}) {
     const controls = {};
     const page = new Adw.PreferencesPage({title: 'Trait JustTiling', icon_name: 'view-grid-symbolic'});
     const behavior = new Adw.PreferencesGroup({title: _("Tiling"),
-        description: _("Changes are saved automatically. Tiling supports one monitor.")});
+        description: _("Changes are saved automatically. Each monitor has an independent grid.")});
     for (const [key, title] of [
         ['hide-panel-icon', _("Hide the panel icon")],
         ['tiling-enabled', _("Tile windows automatically")],

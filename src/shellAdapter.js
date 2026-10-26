@@ -28,6 +28,7 @@ export class ShellAdapter {
             () => this.emit('changed'));
         this.identitySnapshot = null;
         this.traceWindows = false;
+        this.monitorPreferences = new Gio.Settings({schema_id: 'org.gnome.mutter'});
     }
 
     conflicts() {
@@ -69,6 +70,7 @@ export class ShellAdapter {
             on(global.display, signal, () => this.emit('changed'));
         on(global.display, 'workareas-changed', () => this.emit('changed'));
         on(Main.layoutManager, 'monitors-changed', () => this.emit('topology'));
+        on(this.monitorPreferences, 'changed::workspaces-only-on-primary', () => this.emit('workspace'));
         on(global.workspace_manager, 'active-workspace-changed', () => this.emit('workspace'));
         on(global.workspace_manager, 'workspace-removed', () => this.emit('workspace'));
         on(global.workspace_manager, 'workspace-added', () => this.emit('workspace'));
@@ -115,6 +117,32 @@ export class ShellAdapter {
         return {x, y};
     }
     monitorCount() { return global.display.get_n_monitors(); }
+    monitorIdentity(index) {
+        const manager = global.backend.get_monitor_manager();
+        const monitor = manager.get_monitors?.().find(item =>
+            manager.get_monitor_for_connector(item.get_connector()) === index);
+        return {index, ...(monitor ? {connector: monitor.get_connector()} : {})};
+    }
+    preferredMonitor(saved) {
+        if (saved.connector) {
+            const index = global.backend.get_monitor_manager().get_monitor_for_connector(saved.connector);
+            return index >= 0 ? index : this.primaryMonitor();
+        }
+        return saved.index < this.monitorCount() ? saved.index : this.primaryMonitor();
+    }
+    moveToMonitor(id, index) {
+        const win = this.windows.get(id)?.win;
+        if (!win || win.get_monitor() === index) return;
+        if (win.get_maximize_flags()) win.unmaximize();
+        const area = this.monitorArea(index);
+        // A user-operation move crosses logical monitors on both supported Mutter versions.
+        win.move_frame(true, area.x + 20, area.y + 40);
+    }
+    primaryMonitor() { return global.display.get_primary_monitor?.() ?? 0; }
+    workspacesOnlyOnPrimary() { return this.monitorPreferences.get_boolean('workspaces-only-on-primary'); }
+    monitorArea(index) {
+        return plainRect(global.workspace_manager.get_active_workspace().get_work_area_for_monitor(index));
+    }
     activeWorkspace() {
         this.workspace = global.workspace_manager.get_active_workspace();
         return this.workspace;
@@ -213,15 +241,18 @@ export class ShellAdapter {
         if (!win) return null;
         const rect = plainRect(win.get_frame_rect());
         const identity = this.applicationSnapshot().get(id);
+        const monitor = win.get_monitor();
+        const sharedSecondary = this.workspacesOnlyOnPrimary() && monitor !== this.primaryMonitor();
         const limits = frameLimits(win.get_min_size(), win.get_max_size(), (width, height) =>
             win.client_rect_to_frame_rect(new Mtk.Rectangle({x: 0, y: 0, width, height})));
         return {
             alive: true, ready: !identity?.identityPending && win.mapped && Boolean(win.get_compositor_private()) && rect.width > 0 && rect.height > 0,
             normal: win.get_window_type() === Meta.WindowType.NORMAL,
             transient: Boolean(win.get_transient_for()), overrideRedirect: win.is_override_redirect(),
-            skipTaskbar: win.is_skip_taskbar(), sticky: win.is_on_all_workspaces(),
-            inScope: win.get_workspace() === this.workspace && win.get_monitor() === 0,
-            domain: win.get_workspace(), monitor: win.get_monitor(),
+            skipTaskbar: win.is_skip_taskbar(), sticky: win.is_on_all_workspaces() && !sharedSecondary,
+            inScope: monitor >= 0 && monitor < this.monitorCount() &&
+                (sharedSecondary || win.get_workspace() === this.workspace),
+            domain: win.get_workspace(), monitor,
             fullscreen: win.is_fullscreen(), minimized: win.minimized,
             maximized: win.get_maximize_flags() !== 0,
             movable: win.allows_move(), resizable: win.allows_resize(), above: win.is_above(),
@@ -308,7 +339,7 @@ export class ShellAdapter {
     }
     focusWindow(id) {
         const win = this.windows.get(id)?.win;
-        if (!win || win.get_workspace() !== global.workspace_manager.get_active_workspace() ||
+        if (!win || (!win.is_on_all_workspaces() && win.get_workspace() !== global.workspace_manager.get_active_workspace()) ||
             win.minimized || win.is_fullscreen()) return;
         win.activate(global.get_current_time());
     }
@@ -351,5 +382,6 @@ export class ShellAdapter {
         this.shortcutSettings = null;
         this.tracker = null;
         this.shortcutEnabled = null;
+        this.monitorPreferences = null;
     }
 }

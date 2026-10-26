@@ -47,7 +47,7 @@ export class SwapPreview {
         try {
             if (!this.controller.running || this.controller.suspended || !this.controller.drag ||
                 (!this.controller.dragSwap && !this.controller.layoutAssistant) || Main.overview.visible || Main.sessionMode.isLocked ||
-                !Main.sessionMode.hasWindows || this.adapter.monitorCount() !== 1) {
+                !Main.sessionMode.hasWindows || this.adapter.monitorCount() < 1) {
                 this.stopTimer();
                 this.clear();
                 this.layoutBar.clear();

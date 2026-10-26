@@ -73,8 +73,8 @@ msgstr "Alterar"
 msgid "Changes apply immediately to gaps, corners and the focus border."
 msgstr "As alterações são aplicadas imediatamente aos espaçamentos, aos cantos e à borda de foco."
 
-msgid "Changes are saved automatically. Tiling supports one monitor."
-msgstr "As alterações são salvas automaticamente. O tiling funciona com um monitor."
+msgid "Changes are saved automatically. Each monitor has an independent grid."
+msgstr "As alterações são salvas automaticamente. Cada monitor tem um grid independente."
 
 msgid "Choose a shortcut or disable its keyboard action. Super+Arrow temporarily replaces GNOME shortcuts while tiling is active. The menu remains available."
 msgstr "Escolha uma combinação ou desative a ação pelo teclado. Super+setas substituem temporariamente os atalhos do GNOME enquanto a extensão estiver ativa. O menu continua disponível."

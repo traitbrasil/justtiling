@@ -16,11 +16,11 @@
 
 ---
 
-**GNOME Shell 50 and 51** · **Single monitor** · **English & Portuguese** · **GPL-3.0-or-later**
+**GNOME Shell 50 and 51** · **Multiple monitors** · **English & Portuguese** · **GPL-3.0-or-later**
 
 Trait JustTiling arranges your windows as you open and close them, giving each workspace its own layout. Adjust a split, swap two windows, or keep an application floating. Your desktop stays yours to shape.
 
-**Current version: 0.28.0.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
+**Current version: 0.29.2.** Preparation for the first GNOME Extensions submission is underway. Install from source using the steps below.
 
 ## Make room for the way you work
 
@@ -41,13 +41,13 @@ Layout learning is enabled by default. It is a preference, rather than an exact 
 
 ## Get started
 
-You need **GNOME Shell 50 or 51**, one logical monitor, and the development tools `git`, `make`, `gjs`, `python3`, and `glib-compile-schemas`.
+You need **GNOME Shell 50 or 51**, one or more monitors, and the development tools `git`, `make`, `gjs`, `python3`, and `glib-compile-schemas`.
 
 ```bash
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/trait-justtiling-0.28.0.zip
+gnome-extensions install --force dist/trait-justtiling-0.29.2.zip
 ```
 
 **Log out and log back in**, then enable the extension:
@@ -76,7 +76,7 @@ All nine actions are configurable. The default Super+Arrow shortcuts temporarily
 
 ## Built for a focused setup
 
-This version supports **one logical monitor on GNOME Shell 50 and 51**. Connecting a second monitor pauses tiling and requests restoration of managed windows; after returning to one monitor, resume explicitly from the menu or shortcut. Other GNOME versions and multiple-monitor tiling are outside the current support scope.
+This version supports **one or more monitors on GNOME Shell 50 and 51**. Each monitor has an independent grid and workspace layouts, respecting its own resolution, orientation, scaling and available area. Connecting or removing a monitor keeps tiling enabled. Moving a tiled window between monitors reorganizes the source and destination after release. Focus cycling and swaps act within the focused monitor. Both GNOME workspace modes are supported: all monitors, or only the primary monitor.
 
 The interface follows your session language: Portuguese for Portuguese sessions, English otherwise. Learned application layouts stay in local GSettings. The extension makes no background network requests. About links open only when you select them and include fixed campaign parameters. [Configuration and privacy →](docs/configuration.md)
 

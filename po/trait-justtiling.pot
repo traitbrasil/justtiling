@@ -73,7 +73,7 @@ msgstr ""
 msgid "Changes apply immediately to gaps, corners and the focus border."
 msgstr ""
 
-msgid "Changes are saved automatically. Tiling supports one monitor."
+msgid "Changes are saved automatically. Each monitor has an independent grid."
 msgstr ""
 
 msgid "Choose a shortcut or disable its keyboard action. Super+Arrow temporarily replaces GNOME shortcuts while tiling is active. The menu remains available."

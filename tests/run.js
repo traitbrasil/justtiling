@@ -1,3 +1,4 @@
+import {Monitors} from '../src/monitors.js';
 import {PRESETS, presetFrame, layoutBarGeometry, layoutHit, insideBar} from '../src/layout/presets.js';
 import {balancedLayout, insertBalanced} from '../src/layout/balance.js';
 import {pinnedLayout, withoutReservations} from '../src/pinning.js';
@@ -273,6 +274,249 @@ function setup(windows = [[1, {}]]) {
     return {clock, adapter, controller};
 }
 
+function monitorSetup(entries = [[1, 0], [2, 1]]) {
+    const clock = new FakeClock(), adapter = new FakeAdapter(clock);
+    adapter.monitors = 2;
+    adapter.focus = 1; adapter.workspace = 'main'; adapter.primaryOnly = false;
+    adapter.areas = [AREA, {x: -1200, y: -100, width: 1200, height: 1600}];
+    adapter.monitorArea = index => adapter.areas[index];
+    adapter.focusedId = () => adapter.focus;
+    adapter.focusWindow = id => { adapter.focus = id; };
+    adapter.activeWorkspace = () => adapter.workspace;
+    adapter.workspaces = () => ['main', 'other'];
+    adapter.workspacesOnlyOnPrimary = () => adapter.primaryOnly;
+    adapter.primaryMonitor = () => 0;
+    adapter.connectors = ['DP-1', 'HDMI-1'];
+    adapter.monitorIdentity = index => ({index, connector: adapter.connectors[index]});
+    adapter.preferredMonitor = saved => saved.connector ? Math.max(0, adapter.connectors.slice(0, adapter.monitors).indexOf(saved.connector)) :
+        (saved.index < adapter.monitors ? saved.index : 0);
+    adapter.moveToMonitor = (id, index) => {
+        adapter.windows.get(id).monitor = index;
+        adapter.event?.({kind: 'changed', id});
+    };
+    const read = adapter.read.bind(adapter);
+    adapter.read = id => {
+        const data = read(id);
+        return data && {...data, inScope: data.domain === adapter.workspace};
+    };
+    for (const [id, monitor, extra] of entries)
+        adapter.add(id, {monitor, domain: 'main', appId: `app${id}.desktop`, ...extra});
+    const controller = new Monitors(adapter, clock);
+    adapter.event = event => controller.event(event);
+    controller.start(); clock.run();
+    return {controller, adapter, clock};
+}
+test('multiple monitors tile independently with different origins and portrait geometry', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 0], [3, 1], [4, 1]]);
+    equal(c.workers.size, 2); assert(!c.suspended);
+    for (const [id, data] of a.windows) {
+        const area = a.areas[data.monitor], rect = data.rect;
+        assert(rect.x >= area.x && rect.y >= area.y && rect.x + rect.width <= area.x + area.width &&
+            rect.y + rect.height <= area.y + area.height, `Window ${id} outside its monitor`);
+        equal(c.records.get(id).state, 'tiled');
+    }
+    const other = {...a.read(3).rect}; a.windows.delete(2); c.event({kind: 'closed', id: 2}); clock.run();
+    equal(a.read(3).rect, other); equal(a.read(1).rect.width, AREA.width - 16);
+    c.stop(); equal(clock.jobs.size, 0);
+});
+test('monitor connection and removal preserve explicit floating choices and resume automatically', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.toggleWindow(2); clock.run();
+    a.windows.get(2).monitor = 0; a.monitors = 1; c.event({kind: 'topology'}); clock.run();
+    assert(!c.suspended && c.running && c.workers.size === 1);
+    equal(c.records.get(2).override, 'floating'); equal(c.records.get(2).state, 'floating');
+    a.monitors = 2; c.event({kind: 'topology'}); clock.run();
+    equal(c.workers.size, 2); assert(!c.suspended); c.stop(); equal(clock.jobs.size, 0);
+});
+test('cross-monitor moves transfer ownership and reflow both grids without old snapshot restoration', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 0], [3, 1]]);
+    a.windows.get(2).monitor = 1; a.windows.get(2).rect.x = -900;
+    c.event({kind: 'changed', id: 2}); clock.run();
+    assert(!c.workers.get(0).records.has(2) && c.workers.get(1).records.has(2));
+    equal(c.records.get(2).state, 'tiled'); equal(a.read(1).rect.width, AREA.width - 16);
+    assert(!a.restores.includes(2)); c.stop();
+});
+test('cross-monitor native dragging waits for release before tiling on the destination', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.layoutAssistant = true;
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'move', pointer: true}}); assert(c.drag);
+    a.windows.get(1).monitor = 1; a.windows.get(1).rect.x = -900;
+    const moves = a.moves.length;
+    c.event({kind: 'changed', id: 1}); clock.run(); equal(a.moves.length, moves);
+    assert(!c.workers.get(1).records.has(1));
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); assert(!c.drag && a.read(1).rect.x < 0);
+    c.stop();
+});
+test('fullscreen pauses only its monitor while other monitors keep organizing', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    a.windows.get(1).fullscreen = true; c.event({kind: 'changed', id: 1}); clock.run();
+    const full = {...a.read(1).rect};
+    a.add(3, {monitor: 1, domain: 'main', appId: 'app3.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run();
+    equal(c.records.get(3).state, 'tiled'); equal(a.read(1).rect, full); assert(!c.suspended); c.stop();
+});
+test('secondary monitors stay tiled across primary-only workspace changes', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 1, {sticky: true}]]);
+    a.primaryOnly = true; c.event({kind: 'workspace'}); clock.run();
+    equal(c.records.get(2).state, 'tiled'); const frame = {...a.read(2).rect};
+    a.workspace = 'other'; c.event({kind: 'workspace'}); clock.run();
+    equal(c.records.get(2).state, 'tiled'); equal(a.read(2).rect, frame);
+    assert(c.workers.get(0).trees.has('main') && c.workers.get(1).trees.size === 1); c.stop();
+});
+test('focus cycling and numbered swaps stay on the focused monitor', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 0], [3, 1], [4, 1]]);
+    a.focus = 3; const other = {...a.read(1).rect};
+    c.cycleFocus(); equal(a.focus, 4); c.cycleFocus(); equal(a.focus, 3);
+    const context = c.numberedSwapContext(); equal(context.targets, [4]);
+    assert(c.selectNumberedSwap(context, 1)); clock.run(); equal(a.read(1).rect, other); c.stop();
+});
+test('pins share application preferences while duplicate monitor instances do not overwrite learning', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 0], [3, 1, {appId: 'app1.desktop'}]]);
+    c.togglePin(1); clock.run(); assert(c.pinnedLayouts['app-id:app1.desktop']);
+    equal(c.workers.get(1).pinnedLayouts, c.pinnedLayouts);
+    equal(c.workers.get(0).learningWindows().size, 3);
+    c.gaps = {inner: 15, outer: 15}; c.schedule(0); clock.run();
+    equal(c.workers.get(1).gaps.inner, 15); c.stop(); equal(clock.jobs.size, 0);
+});
+test('multi-monitor scoping uses workspace identity rather than the primary-only adapter flag', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    const read = a.read; a.read = id => { const data = read(id); return data && {...data, inScope: data.monitor === 0}; };
+    c.event({kind: 'changed'}); clock.run(); equal(c.records.get(2).state, 'tiled'); c.stop();
+});
+test('temporary zero-monitor topology parks explicit floating choices until displays return', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.toggleWindow(1); clock.run();
+    a.monitors = 0; c.event({kind: 'topology'}); clock.run();
+    equal(c.workers.size, 0); assert(c.parked.has(1) && c.running && !c.suspended);
+    a.monitors = 2; c.event({kind: 'topology'}); clock.run();
+    equal(c.records.get(1).override, 'floating'); equal(c.records.get(2).state, 'tiled');
+    c.stop(); equal(clock.jobs.size, 0);
+});
+test('automatic space fallbacks are reconsidered after moving to a larger monitor', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    const owner = c.workers.get(0); owner.float(owner.records.get(1), 'insufficient-space');
+    a.windows.get(1).monitor = 1; c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled'); c.stop();
+});
+test('layout palette pins on the secondary monitor using its own work area', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.layoutAssistant = true; a.focus = 2;
+    const first = {...a.read(1).rect};
+    c.event({kind: 'grab-begin', id: 2, grab: {kind: 'move', pointer: true}}); assert(c.drag);
+    equal(c.drag.area, a.areas[1]); a.windows.get(2).rect.x += 100;
+    c.assistantVisible = c.assistantReady = true;
+    const zone = layoutBarGeometry(a.areas[1]).zones[0];
+    assert(c.presetFits(zone.region) && c.presetPlan(zone.region));
+    a.point = {x: zone.hit.x + 2, y: zone.hit.y + 2};
+    c.event({kind: 'grab-end', id: 2}); clock.run();
+    equal(a.read(2).rect, presetFrame(zone.region, a.areas[1], c.gaps));
+    equal(a.read(1).rect, first); assert(c.pinnedLayouts['app-id:app2.desktop']);
+    equal(c.pinnedLayouts['app-id:app2.desktop'].monitor, {index: 1, connector: 'HDMI-1'}); c.stop();
+});
+test('pinned monitor survives serialization and sends reopened windows to the secondary grid', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run();
+    const saved = readLearning(writeLearning(c.pinnedLayouts));
+    equal(saved['app-id:app2.desktop'].monitor, {index: 1, connector: 'HDMI-1'});
+    a.windows.delete(2); c.event({kind: 'closed', id: 2}); clock.run();
+    c.pinnedLayouts = saved;
+    a.add(3, {monitor: 0, domain: 'main', appId: 'app2.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run();
+    equal(a.read(3).monitor, 1); equal(c.owner(3).adapter.index, 1);
+    equal(c.records.get(3).state, 'tiled');
+    // A later manual move must not be undone by the opening preference.
+    a.moveToMonitor(3, 0); clock.run(); equal(a.read(3).monitor, 0);
+    c.stop();
+    c.pinnedLayouts = saved; c.start(); clock.run(); equal(a.read(3).monitor, 1);
+    c.stop();
+});
+test('missing pinned monitor falls back without overwriting its saved destination', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run(); const saved = writeLearning(c.pinnedLayouts);
+    a.windows.delete(2); c.event({kind: 'closed', id: 2}); a.monitors = 1;
+    c.event({kind: 'topology'}); clock.run();
+    a.add(3, {monitor: 0, domain: 'main', appId: 'app2.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 0);
+    equal(writeLearning(c.pinnedLayouts), saved);
+    a.windows.delete(3); c.event({kind: 'closed', id: 3});
+    a.monitors = 2; c.event({kind: 'topology'}); clock.run();
+    a.add(4, {monitor: 0, domain: 'main', appId: 'app2.desktop'});
+    c.event({kind: 'changed', id: 4}); clock.run(); equal(a.read(4).monitor, 1); c.stop();
+});
+test('disconnecting a pinned monitor releases its reserved region on the primary grid', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0], [2, 1], [3, 1]]);
+    c.learnLayouts = false; c.preserveFocusedWindow = false;
+    c.togglePin(2); clock.run();
+    const key = 'app-id:app2.desktop';
+    c.pinnedLayouts = {...c.pinnedLayouts, [key]: {...c.pinnedLayouts[key], x: 0, y: 0, width: 0.25, height: 1}};
+    c.schedule(0); clock.run(); const saved = writeLearning(c.pinnedLayouts);
+    assert(c.workers.get(1).pinGoals().has(2));
+    for (const id of [2, 3]) a.windows.get(id).monitor = 0;
+    a.monitors = 1; c.event({kind: 'topology'}); clock.run();
+    equal(c.workers.get(0).pinGoals().size, 0);
+    const areas = [1, 2, 3].map(id => a.read(id).rect.width * a.read(id).rect.height);
+    assert(Math.max(...areas) / Math.min(...areas) < 1.06, 'Fallback must balance ordinary windows');
+    equal(writeLearning(c.pinnedLayouts), saved);
+    // Reconnection does not pull an already-open window across monitors.
+    a.monitors = 2; c.event({kind: 'topology'}); clock.run(); equal(a.read(2).monitor, 0);
+    a.moveToMonitor(2, 1); clock.run(); assert(c.workers.get(1).pinGoals().has(2));
+    equal(writeLearning(c.pinnedLayouts), saved); c.stop();
+});
+test('saved pin is inactive on another connected monitor and active after connector reordering', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run(); const saved = writeLearning(c.pinnedLayouts);
+    a.moveToMonitor(2, 0); clock.run(); equal(c.workers.get(0).pinGoals().size, 0);
+    a.connectors.reverse(); c.event({kind: 'topology'}); clock.run();
+    assert(c.workers.get(0).pinGoals().has(2)); equal(writeLearning(c.pinnedLayouts), saved); c.stop();
+});
+test('reopened fallback window has no active pin while its preferred monitor is missing', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run(); const saved = writeLearning(c.pinnedLayouts);
+    a.windows.delete(2); c.event({kind: 'closed', id: 2}); a.monitors = 1;
+    c.event({kind: 'topology'}); clock.run();
+    a.add(3, {monitor: 0, domain: 'main', appId: 'app2.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run();
+    equal(c.records.get(3).state, 'tiled'); equal(c.workers.get(0).pinGoals().size, 0);
+    equal(writeLearning(c.pinnedLayouts), saved); c.stop();
+});
+test('pinned connector wins over monitor enumeration changes', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run();
+    a.windows.delete(2); c.event({kind: 'closed', id: 2});
+    a.connectors.reverse();
+    a.add(3, {monitor: 1, domain: 'main', appId: 'app2.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 0); c.stop();
+});
+test('old pins remain compatible and never infer an arbitrary monitor', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.pinnedLayouts = readLearning('{"version":1,"apps":{"app-id:old.desktop":{"x":0,"y":0,"width":1,"height":1}}}');
+    a.add(3, {monitor: 1, domain: 'main', appId: 'old.desktop'});
+    c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 1); c.stop();
+});
+test('pinned opening waits for readiness and leaves file dialogs and app exceptions alone', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run();
+    a.add(3, {monitor: 0, domain: 'main', appId: 'app2.desktop', ready: false});
+    c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 0);
+    a.windows.get(3).ready = true; c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 1);
+    c.floatingApps = ['app-id:app2.desktop'];
+    a.add(4, {monitor: 0, domain: 'main', appId: 'app2.desktop'});
+    a.add(5, {monitor: 0, domain: 'main', appId: 'app2.desktop', transient: true});
+    c.event({kind: 'changed', id: 4}); clock.run(); equal(a.read(4).monitor, 0); equal(a.read(5).monitor, 0); c.stop();
+});
+test('new maximized pinned windows reach their saved monitor before joining its grid', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup();
+    c.togglePin(2); clock.run();
+    a.add(3, {monitor: 0, domain: 'main', appId: 'app2.desktop', maximized: true, resizable: false});
+    c.event({kind: 'changed', id: 3}); clock.run(); equal(a.read(3).monitor, 1); c.stop();
+});
+test('invalid monitor metadata is discarded without losing valid pinned geometry', () => {
+    for (const monitor of [{index: -1}, {index: 100}, {index: '1'}]) {
+        const result = readLearning(writeLearning({'app-id:a': {x: 0, y: 0, width: 1, height: 1, monitor}}));
+        assert(result['app-id:a']); assert(!result['app-id:a'].monitor);
+    }
+});
 test('controller tiles automatically and recovers space after closure', () => {
     const {clock, adapter: a, controller: c} = setup([[1, {}], [2, {}]]);
     equal(ids(c.tree), [1, 2]);

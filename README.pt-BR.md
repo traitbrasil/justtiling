@@ -16,11 +16,11 @@
 
 ---
 
-**GNOME Shell 50 e 51** · **Um monitor** · **Inglês e português** · **GPL-3.0-or-later**
+**GNOME Shell 50 e 51** · **Múltiplos monitores** · **Inglês e português** · **GPL-3.0-or-later**
 
 A Trait JustTiling organiza suas janelas conforme você abre e fecha aplicativos, com um layout independente por workspace. Ajuste uma divisão, troque duas janelas ou mantenha um aplicativo flutuante. Você escolhe como trabalhar.
 
-**Versão atual: 0.28.0.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
+**Versão atual: 0.29.2.** Em preparação para a primeira submissão ao GNOME Extensions. A instalação está disponível pelo código-fonte.
 
 ## Um espaço que acompanha seu trabalho
 
@@ -38,13 +38,13 @@ O aprendizado considera o espaço e as restrições das janelas. Ele não garant
 
 ## Instalar
 
-Requer **GNOME Shell 50 ou 51**, um monitor lógico e as ferramentas `git`, `make`, `gjs`, `python3` e `glib-compile-schemas`.
+Requer **GNOME Shell 50 ou 51**, um ou mais monitores e as ferramentas `git`, `make`, `gjs`, `python3` e `glib-compile-schemas`.
 
 ```bash
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/trait-justtiling-0.28.0.zip
+gnome-extensions install --force dist/trait-justtiling-0.29.2.zip
 ```
 
 **Encerre e inicie a sessão novamente.** Depois:
@@ -73,7 +73,7 @@ As nove ações são configuráveis nas Preferências. Super+setas substitui tem
 
 ## Compatibilidade e privacidade
 
-Esta versão é voltada a **GNOME Shell 50 e 51 com um monitor lógico**. Um segundo monitor pausa a organização e solicita a restauração das janelas. Ao voltar a um monitor, retome pelo menu ou atalho. Outras versões do GNOME e organização em múltiplos monitores não fazem parte do suporte atual.
+Esta versão oferece suporte a **um ou mais monitores no GNOME Shell 50 e 51**. Cada monitor tem grid e layouts de workspace independentes, respeitando sua resolução, orientação, escala e área útil. Conectar ou remover um monitor mantém a organização ativa. Ao arrastar uma janela organizada para outro monitor, os dois grids são ajustados depois de soltar. A troca de foco e os swaps atuam no monitor em foco. Há suporte aos workspaces em todos os monitores ou apenas no principal.
 
 A interface acompanha o idioma da sessão: português em sessões em português, inglês nos demais idiomas. O aprendizado fica salvo localmente em GSettings. Não há requisições de rede em segundo plano; os links do Sobre só abrem por ação do usuário e incluem parâmetros fixos de campanha.
 

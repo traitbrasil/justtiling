@@ -337,10 +337,14 @@ export class Controller {
         return true;
     }
 
+    activePin(data) {
+        const key = data && learningMatch(data, this.pinnedLayouts);
+        return key && (this.adapter.pinApplies?.(this.pinnedLayouts[key]) ?? true) ? key : null;
+    }
     pinGoals() {
         const goals = new Map(), candidates = new Map();
         for (const id of ids(this.tree)) {
-            const data = this.adapter.read(id), key = data && learningMatch(data, this.pinnedLayouts);
+            const data = this.adapter.read(id), key = this.activePin(data);
             if (!key) continue;
             if (!candidates.has(key)) candidates.set(key, []);
             candidates.get(key).push(id);
@@ -355,6 +359,10 @@ export class Controller {
         return goals;
     }
 
+    pinMonitor() {
+        const monitor = this.adapter.monitorIdentity?.(this.adapter.index ?? 0);
+        return monitor ? {monitor} : {};
+    }
     togglePin(id) {
         if (!this.running || this.suspended) return;
         if (this.adapter.activeWorkspace) this.domain = this.adapter.activeWorkspace();
@@ -368,7 +376,7 @@ export class Controller {
             }
             const frame = normalizedFrame(data.rect, this.adapter.area(), this.gaps);
             if (!frame || Object.keys(apps).length >= 128) return;
-            apps[key] = frame;
+            apps[key] = {...frame, ...this.pinMonitor()};
             if (!this.pinOwners.has(this.domain)) this.pinOwners.set(this.domain, new Map());
             this.pinOwners.get(this.domain).set(key, id);
         }
@@ -383,10 +391,12 @@ export class Controller {
 
     fitPins(area, specs) {
         if (this.learningPending) return; // Explicit manual edits settle before saving a new anchor.
-        const rebalance = this.balancePending.has(this.domain);
         const goals = this.pinGoals();
+        const savedGoals = JSON.stringify([...goals]);
         const signature = JSON.stringify({goals: [...goals], area, gaps: this.gaps, specs: [...specs]});
         const cache = this.pinCache.get(this.domain);
+        const rebalance = this.balancePending.has(this.domain) ||
+            (cache?.goals !== undefined && cache.goals !== savedGoals);
         if (!rebalance && cache?.tree === this.tree && cache.signature === signature) return;
         let tree = this.tree;
         if (rebalance) tree = this.preferredBalance(withoutReservations(tree), area, specs, this.gaps);
@@ -394,7 +404,7 @@ export class Controller {
             {inner: this.gaps.inner, outer: 0}) : null;
         this.tree = pinnedLayout(tree, goals, area, specs, this.gaps, remainder);
         this.balancePending.delete(this.domain);
-        this.pinCache.set(this.domain, {tree: this.tree, signature});
+        this.pinCache.set(this.domain, {tree: this.tree, signature, goals: savedGoals});
     }
 
     learningWindows(extra = null) {
@@ -430,7 +440,10 @@ export class Controller {
         for (const id of pending.affected) {
             const data = windows.get(id), pinKey = data && learningMatch(data, pinned);
             const preferred = normalizedFrame(plan.frames.get(id), this.adapter.area(), this.gaps);
-            if (pinKey && preferred && owners.has(id)) pinned[pinKey] = preferred;
+            if (pinKey && preferred && owners.has(id)) {
+                const monitor = pinned[pinKey].monitor;
+                pinned[pinKey] = {...preferred, ...(monitor ? {monitor} : this.pinMonitor())};
+            }
             if (!this.learnLayouts) continue;
             const key = uniqueLearningKey(id, windows);
             const frame = normalizedFrame(plan.frames.get(id), this.adapter.area(), this.gaps);
@@ -460,7 +473,7 @@ export class Controller {
         for (const id of ids(tree)) {
             if (!uniqueLearningKey(id, windows)) continue;
             const data = windows.get(id);
-            if (learningMatch(data, this.pinnedLayouts)) continue;
+            if (this.activePin(data)) continue;
             const profile = learningMatch(data, this.learnedLayouts);
             if (!profile) continue;
             const goal = this.learnedLayouts[profile];
@@ -479,7 +492,7 @@ export class Controller {
         const learned = pinnedLayout(next, goals, area, specs, gaps,
             (part, region) => balancedLayout(part, region, specs, {inner: gaps.inner, outer: 0}));
         const ordinary = new Set(ids(next).filter(id => !goals.has(id) &&
-            !learningMatch(this.adapter.read(id), this.pinnedLayouts)));
+            !this.activePin(this.adapter.read(id))));
         return comfortableLearning(next, learned, goals, area, specs, gaps, ordinary, withoutReservations(learned));
     }
 
@@ -658,7 +671,7 @@ export class Controller {
             const data = this.adapter.read(context.id), key = learningIdentity(data);
             const profile = learningMatch(data, this.pinnedLayouts), apps = {...this.pinnedLayouts};
             if (profile) delete apps[profile];
-            apps[key] = result.goal;
+            apps[key] = {...result.goal, ...this.pinMonitor()};
             this.pinnedLayouts = apps;
             if (!this.pinOwners.has(this.domain)) this.pinOwners.set(this.domain, new Map());
             this.pinOwners.get(this.domain).set(key, context.id);

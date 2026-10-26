@@ -42,7 +42,14 @@ let aboveChanges = 0;
 Object.assign(display, {list_all_windows: () => windows,
     get_n_monitors: () => monitors, focus_window: null});
 let pointer = {x: 0, y: 0}, pointerReads = 0;
-globalThis.global = {window_manager: shellwm, stage: {width: 1600, height: 932}, display, workspace_manager: manager, get_current_time: () => 1234,
+const monitorManager = {
+    get_monitors: () => Array.from({length: monitors}, (_, i) => ({get_connector: () => `TEST-${i}`})),
+    get_monitor_for_connector: connector => {
+        const index = Number(connector.replace('TEST-', ''));
+        return Number.isInteger(index) && index >= 0 && index < monitors ? index : -1;
+    },
+};
+globalThis.global = {backend: {get_monitor_manager: () => monitorManager}, window_manager: shellwm, stage: {width: 1600, height: 932}, display, workspace_manager: manager, get_current_time: () => 1234,
     get_pointer: () => { pointerReads++; return [pointer.x, pointer.y, 0]; }};
 
 class WindowActor extends Signals {
@@ -262,10 +269,10 @@ assert(display.handlers.size === 0 && shellwm.handlers.size === 0, 'Partial-enab
 const noticesBeforeMonitor = Main.notices.length;
 ext = new JustTiling(); ext.enable(); await wait(500);
 monitors = 2; Main.layoutManager.emit('monitors-changed'); await wait(200);
-assert(w1.frame.width === 700, 'Second monitor must restore geometry');
-assert(Main.notices.length === noticesBeforeMonitor + 1, 'Suspension must notify once');
+assert(w1.frame.width === 1570 && !ext._controller.suspended, 'Second monitor must keep the existing grid active');
+assert(Main.notices.length === noticesBeforeMonitor, 'Connecting a monitor must not pause tiling or notify');
 monitors = 1; Main.layoutManager.emit('monitors-changed'); await wait(500);
-assert(w1.frame.width === 700, 'Suspended controller must not auto-resume');
+assert(w1.frame.width === 1570, 'Removing a monitor must keep tiling active');
 ext.disable();
 assert(display.handlers.size === 0 && w1.handlers.size === 0, 'Final cleanup leaked observers');
 
@@ -379,10 +386,10 @@ assert(!settings.get_boolean('tiling-enabled') && w1.frame.width === 850, 'Panel
 enabledItem.toggle(); await wait(500);
 assert(settings.get_boolean('tiling-enabled') && w1.frame.width === 1570, 'Panel on did not restart tiling');
 monitors = 2; Main.layoutManager.emit('monitors-changed'); await wait(100);
-assert(!enabledItem.state, 'Suspended menu must offer explicit restart');
+assert(enabledItem.state, 'The panel toggle must stay enabled with multiple monitors');
 monitors = 1; Main.layoutManager.emit('monitors-changed'); await wait(100);
-enabledItem.toggle(); await wait(500);
-assert(w1.frame.width === 1570, 'Panel restart failed when enabled setting already was true');
+await wait(500);
+assert(w1.frame.width === 1570, 'Monitor removal must preserve the active grid');
 button.menu.close();
 display.focus_window = null; display.emit('notify::focus-window');
 assert(!floatingItem.sensitive && !appRuleItem.sensitive, 'Panel actions require a valid window');

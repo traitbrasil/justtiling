@@ -25,7 +25,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.28.0 pure suite has 210 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.29.2 pure suite has 232 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.28.0.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.29.2.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
 Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 
@@ -69,3 +69,11 @@ The optional corner mask uses `Shell.GLSLEffect` on GNOME 50 and `Clutter.Shader
 Use the same source checkout in separate GNOME 50 and 51 environments. Test tools default to GNOME 51; for GNOME 50, run `TRAIT_TEST_GNOME=50 make check-api test-shell`. GNOME 50 uses Mutter ABI 18; GNOME 51 uses ABI 51. The environment selector only changes test library discovery; installed extension modules use the libraries supplied by Shell.
 
 Run `make test-native-chooser` in each environment to load the full extension in a headless compositor with private settings, D-Bus and display sockets. It verifies that Files tiles, unparented OpenFile/SaveFile selectors stay excluded, and native corner effects attach without shader errors. The GNOME 50 shader must be constructed inside this compositor because `Shell.GLSLEffect` requires an initialized Shell stage. No fallback disables any feature. Run `make test-preferences` for the GTK interface and `make test-corners` for pixel-level shader checks.
+
+## Monitor coordination
+
+`src/monitors.js` coordinates a layout engine for every physical monitor. `src/monitorAdapter.js` scopes window membership, workspace identity and work area while sharing native objects and observers. Transfers hand off record ownership without restoring old monitor coordinates. During native cross-monitor moves the destination waits for release. Temporary zero-monitor topology changes retain manual floating overrides until displays return. Settings, pin profiles and learned application profiles remain shared, with per-monitor layout caches and unique learning across all tiled instances.
+
+For real two-monitor checks, run `TRAIT_TEST_MONITORS=2 make test-native-chooser`; add `TRAIT_TEST_WORKSPACES=all` to cover workspaces on every monitor. The default two-monitor case covers primary-only workspaces. These commands create two private virtual outputs (1280×900 and 1024×768), load the full extension and verify a separate Files grid on each monitor, floating selectors and native corner rendering. Pure tests additionally cover negative origins, portrait work areas, hotplug, transfers, fullscreen isolation, pinning, focus and swaps.
+
+To verify saved monitor placement in the private compositor, run `TRAIT_TEST_MONITORS=2 TRAIT_TEST_PIN_MONITOR=1 make test-native-chooser`. The fixture seeds a local monitor preference and checks that new Files windows join the secondary grid while file selectors remain floating. Add `TRAIT_TEST_WORKSPACES=all` to cover workspaces on all monitors.
