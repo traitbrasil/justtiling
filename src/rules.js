@@ -40,11 +40,28 @@ export function constraints(data) {
     };
 }
 
+// Bound current metadata without truncating identifiers into ambiguous matches.
+export function boundedIdentities(values) {
+    const result = [], seen = new Set(); let bytes = 0;
+    for (const value of values) {
+        if (typeof value !== 'string' || !value || value.length > 512 ||
+            /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value) || seen.has(value)) continue;
+        if (result.length >= 32 || bytes + value.length * 2 > 8192) break;
+        seen.add(value); result.push(value); bytes += value.length * 2;
+    }
+    return result;
+}
+// Audited, self-only compatibility alias for OpenLogi's separately launched
+// Caps Lock OSD. This does not authorize grouping, process access or settings
+// writes, and works even when XWayland cannot supply authenticated ownership.
+const COMPATIBILITY_IDENTITIES = new Map([
+    ['openlogi-lock-key-osd', ['app-id:openlogi.desktop', 'wm-class:org.openlogi.openlogi']],
+]);
 export function appIdentities(data) {
     const fields = [['app-id', data.appId], ['wm-class', data.wmClass], ['wm-instance', data.wmInstance],
         ['sandbox-id', data.sandboxId], ['gtk-app-id', data.gtkAppId]];
-    return [...new Set([...fields.filter(([, value]) => typeof value === 'string' && value.trim())
-        .map(([kind, value]) => `${kind}:${value}`), ...(data.applicationIdentities ?? [])])];
+    return boundedIdentities([...fields.filter(([kind, value]) => typeof value === 'string' && value.length + kind.length + 1 <= 512 && value.trim())
+        .map(([kind, value]) => `${kind}:${value}`), ...(COMPATIBILITY_IDENTITIES.get(data.wmClass) ?? []), ...(data.applicationIdentities ?? [])]);
 }
 
 export function matchesApp(data, exceptions) {
@@ -61,46 +78,35 @@ export function setAppException(exceptions, data, enabled) {
     return [...exceptions, selected];
 }
 
-// Group only by compositor application, positive client PID, or an explicit
-// transient parent. Titles, executable names and generic WM_CLASS are not links.
-export function applicationIdentities(windows) {
-    const parent = new Map([...windows.keys()].map(id => [id, id]));
-    function root(id) {
-        let key = id;
-        while (parent.get(key) !== key) key = parent.get(key);
-        while (parent.get(id) !== id) { const next = parent.get(id); parent.set(id, key); id = next; }
-        return key;
-    }
-    function link(a, b) { parent.set(root(a), root(b)); }
-    const groups = new Map();
-    for (const [id, d] of windows) {
-        if (!d) continue;
-        const keys = [];
-        if (d.appGroupId) keys.push(`app:${d.appGroupId}`);
-        if (d.appId) keys.push(`desktop:${d.appId}`);
-        if (Number.isInteger(d.pid) && d.pid > 0) keys.push(`pid:${d.pid}`);
-        for (const key of keys) {
-            if (groups.has(key)) link(id, groups.get(key));
-            else groups.set(key, id);
-        }
-        if (d.transientFor !== null && d.transientFor !== undefined && windows.has(d.transientFor))
-            link(id, d.transientFor);
-    }
-    const identities = new Map();
-    for (const [id, d] of windows) {
-        const key = root(id);
-        if (!identities.has(key)) identities.set(key, new Set());
-        if (d) for (const value of appIdentities(d)) identities.get(key).add(value);
-    }
-    return new Map([...windows.keys()].map(id => [id, [...identities.get(root(id))]]));
+// Only authenticated Wayland peer PIDs or independently verified package
+// ownership may link windows. Client-declared PIDs, desktop IDs and classes
+// remain useful for the window's own rule, never as cross-window credentials.
+export function ownershipKeys(data) {
+    const keys = [];
+    if (Number.isInteger(data.ownerPid) && data.ownerPid > 0) keys.push(`peer:${data.ownerPid}`);
+    if (typeof data.verifiedAppId === 'string' && data.verifiedAppId.length <= 512)
+        keys.push(`package:${data.verifiedAppId}`);
+    return keys;
 }
-
-// Upgrade old per-window identifiers only when that exact window is associated
-// with an installed application. Runtime group IDs and PIDs are never persisted.
-export function canonicalAppExceptions(exceptions, windows) {
-    return [...new Set(exceptions.flatMap(rule => {
-        const apps = [...windows.values()].filter(d => d?.appId &&
-            appIdentities({...d, applicationIdentities: []}).includes(rule));
-        return apps.length ? apps.map(d => `app-id:${d.appId}`) : [rule];
-    }))];
+export function applicationIdentities(windows) {
+    const direct = new Map(), groups = new Map();
+    for (const [id, data] of windows) {
+        direct.set(id, appIdentities(data ?? {}));
+        if (!data || data.transientFor != null || data.normal === false || data.special) continue;
+        for (const key of ownershipKeys(data))
+            groups.set(key, boundedIdentities([...(groups.get(key) ?? []), ...direct.get(id)]));
+    }
+    function inherited(id, visited = new Set()) {
+        if (visited.has(id) || visited.size >= 16) return [];
+        visited.add(id);
+        const data = windows.get(id);
+        if (!data) return [];
+        const keys = ownershipKeys(data);
+        const values = [...(direct.get(id) ?? []), ...keys.flatMap(key => groups.get(key) ?? [])];
+        const parent = windows.get(data.transientFor);
+        if (parent && keys.some(key => ownershipKeys(parent).includes(key)))
+            values.push(...inherited(data.transientFor, visited));
+        return boundedIdentities(values);
+    }
+    return new Map([...windows.keys()].map(id => [id, inherited(id)]));
 }

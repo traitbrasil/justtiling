@@ -151,10 +151,9 @@ export default class JustTiling extends Extension {
 
     _floatingApps() {
         const current = this._settings.get_strv('floating-apps');
-        const canonical = this._adapter.canonicalFloatingApps(current);
-        if (JSON.stringify(current) !== JSON.stringify(canonical))
-            this._settings.set_strv('floating-apps', canonical);
-        return canonical;
+        // Observed window metadata must never rewrite persistent user rules.
+        this._adapter.setFloatingRules(current);
+        return current;
     }
 
     _gaps() {

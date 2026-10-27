@@ -20,12 +20,13 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make test-native-chooser` | Installed Nautilus OpenFile/SaveFile versus main Files window with the full extension and native corner effects in headless GNOME, a private D-Bus session and temporary profile; never connects to the desktop session |
 | `make test-shell` | Isolated integration with real GLib/Meta and memory settings, replacing Shell UI with doubles; runs in Portuguese and English |
 | `make test-preferences` | Real GTK/Adwaita in private Broadway, memory settings, both languages, and the English preview |
+| `make test-security` | Reject linked build inputs and forged diagnostic records using temporary sources and mocked session tools |
 | `make test-package` | Read-only installed-package query smoke tests |
 | `python3 tests/capture-tool-test.py` | Capture-tool cleanup and interruption checks using fakes |
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.29.2 pure suite has 232 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.30.0 pure suite has 236 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -56,7 +57,7 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.29.2.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.30.0.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
 Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 

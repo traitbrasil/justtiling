@@ -9,11 +9,12 @@ import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js
 import {SYSTEM_SCHEMAS} from './shortcutOverrides.js';
 import {Connections} from './resources.js';
 import {clampRect, frameLimits, plainRect} from './geometry.js';
-import {applicationIdentities, canonicalAppExceptions} from './rules.js';
+import {applicationIdentities, boundedIdentities, ownershipKeys} from './rules.js';
 import {PackageIdentity} from './packageIdentity.js';
 import {PackageLookup} from './packageLookup.js';
 import {processLineage} from './processInfo.js';
 import {describeGrab} from './grab.js';
+import {safeLogText} from './logging.js';
 
 export class ShellAdapter {
     constructor() {
@@ -28,6 +29,7 @@ export class ShellAdapter {
             () => this.emit('changed'));
         this.identitySnapshot = null;
         this.traceWindows = false;
+        this.floatingRules = [];
         this.monitorPreferences = new Gio.Settings({schema_id: 'org.gnome.mutter'});
     }
 
@@ -202,20 +204,28 @@ export class ShellAdapter {
         if (this.identitySnapshot) return this.identitySnapshot;
         const raw = new Map();
         for (const [id, entry] of this.windows) {
-            const {win, inheritedIdentities} = entry;
+            const {win} = entry;
             const app = this.tracker.get_window_app(win);
             const group = app?.get_id() ?? null;
             const nativeAppId = app && !app.is_window_backed() ? group : null;
+            // Wayland get_pid is derived from the connected peer. X11 PIDs are
+            // client hints and must not authorize process/package inheritance.
+            const ownerPid = win.get_client_type() === Meta.WindowClientType.WAYLAND ? win.get_pid() : 0;
             let fallback = {pending: false, appId: null};
-            if (!nativeAppId && win.mapped && win.get_window_type() === Meta.WindowType.NORMAL &&
-                !win.get_sandboxed_app_id() && !win.get_gtk_application_id()) {
-                if (!entry.executable) entry.executable = this.packageLookup.executable(win.get_pid());
+            if (ownerPid > 0 && win.mapped && win.get_window_type() === Meta.WindowType.NORMAL) {
+                if (!entry.executable) entry.executable = this.packageLookup.executable(ownerPid);
                 fallback = this.packageIdentity.get(entry.executable);
             }
+            const owner = ownershipKeys({ownerPid, verifiedAppId: fallback.appId}).join('|');
+            const retained = owner && entry.ruleOwner === owner ? entry.retainedRules ?? [] : [];
             raw.set(id, {
-                appId: nativeAppId ?? fallback.appId, identityPending: fallback.pending,
+                appId: nativeAppId ?? fallback.appId, identityPending: !nativeAppId && fallback.pending,
+                ownerPid, verifiedAppId: fallback.appId,
+                normal: win.get_window_type() === Meta.WindowType.NORMAL,
+                special: win.is_override_redirect() || win.is_skip_taskbar(),
                 appGroupId: nativeAppId ?? fallback.appId ?? group, pid: win.get_pid(),
-                applicationIdentities: [...(inheritedIdentities ?? []), ...this.packageLookup.aliases(fallback.appId)],
+                applicationIdentities: boundedIdentities([...this.packageLookup.aliases(fallback.appId),
+                    ...retained.filter(rule => this.floatingRules.includes(rule))]),
                 transientFor: win.get_transient_for()?.get_stable_sequence() ?? null,
                 wmClass: win.get_wm_class(), wmInstance: win.get_wm_class_instance(),
                 gtkAppId: win.get_gtk_application_id(), sandboxId: win.get_sandboxed_app_id(),
@@ -223,17 +233,25 @@ export class ShellAdapter {
         }
         const related = applicationIdentities(raw);
         this.identitySnapshot = new Map([...raw].map(([id, d]) => {
-            const inherited = [...new Set([...(d.applicationIdentities ?? []), ...related.get(id)])];
-            // A child remains part of its application after the parent closes.
-            // This association lasts only for this native window's lifetime.
-            this.windows.get(id).inheritedIdentities = inherited;
-            return [id, {...d, applicationIdentities: inherited}];
+            const entry = this.windows.get(id), owner = ownershipKeys(d).join('|');
+            // Retain only currently configured rules under the same verified
+            // owner. This preserves surviving helpers after the main closes,
+            // without retaining a history of arbitrary mutable identifiers.
+            const retained = entry.ruleOwner === owner && owner ? entry.retainedRules ?? [] : [];
+            const identities = boundedIdentities([...(related.get(id) ?? []), ...retained.filter(rule => this.floatingRules.includes(rule))]);
+            entry.ruleOwner = owner;
+            entry.retainedRules = owner ? identities.filter(value => this.floatingRules.includes(value)) : [];
+            return [id, {...d, applicationIdentities: identities}];
         }));
         return this.identitySnapshot;
     }
 
-    canonicalFloatingApps(exceptions) {
-        return canonicalAppExceptions(exceptions, this.applicationSnapshot());
+    setFloatingRules(rules) {
+        const bounded = rules.filter(rule => boundedIdentities([rule]).length === 1);
+        if (JSON.stringify(bounded) !== JSON.stringify(this.floatingRules)) {
+            this.floatingRules = bounded;
+            this.identitySnapshot = null;
+        }
     }
 
     read(id) {
@@ -362,7 +380,7 @@ export class ShellAdapter {
     log(level, message) {
         // Routine lifecycle/window messages are opt-in; warnings remain visible.
         if (level === 'info' && !this.traceWindows) return;
-        const line = `[justtiling] ${message}`;
+        const line = `[justtiling] ${safeLogText(message)}`;
         if (level === 'error') console.error(line);
         else if (level === 'warn') console.warn(line);
         else console.log(line);

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a local extension ZIP only. Never install, enable or modify GNOME settings."""
+from source_safety import check_inputs
 from pathlib import Path
 import json
 import shutil
@@ -9,6 +10,7 @@ import zipfile
 from translations import compile_catalogs
 
 root = Path(__file__).resolve().parents[1]
+check_inputs(root)
 metadata = json.loads((root / 'metadata.json').read_text())
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)

@@ -1,3 +1,4 @@
+import {safeLogText} from '../src/logging.js';
 import {Monitors} from '../src/monitors.js';
 import {PRESETS, presetFrame, layoutBarGeometry, layoutHit, insideBar} from '../src/layout/presets.js';
 import {balancedLayout, insertBalanced} from '../src/layout/balance.js';
@@ -13,7 +14,7 @@ import {PackageIdentity, packageOwner, desktopFiles} from '../src/packageIdentit
 import {applyLearning, readLearning, writeLearning, normalizedFrame, learningIdentity, uniqueLearningKey} from '../src/learning.js';
 import {processLineage} from '../src/processInfo.js';
 import {Controller} from '../src/controller.js';
-import {appIdentities, applicationIdentities, canonicalAppExceptions, constraints, exclusion, focusBorderEligible, matchesApp, setAppException} from '../src/rules.js';
+import {appIdentities, applicationIdentities, boundedIdentities, constraints, exclusion, focusBorderEligible, matchesApp, setAppException} from '../src/rules.js';
 import {clampRect, frameLimits} from '../src/geometry.js';
 import {Connections} from '../src/resources.js';
 import {canonicalAccelerator, Keybindings} from '../src/keybindings.js';
@@ -1799,48 +1800,68 @@ test('preservation leaves impossible insertion untouched and falls back normally
     equal(insert(tree, 2, specs, AREA, GAPS, 99, 'left', true),
         insert(tree, 2, specs, AREA, GAPS, 99, 'left', false));
 });
-test('application exceptions cover different classes and processes grouped by the compositor', () => {
-    const windows = new Map([[1, {wmClass: 'OpenLog', appId: 'org.openlogi.desktop', pid: 10}],
-        [2, {wmClass: 'OpenLogEditor', appId: 'org.openlogi.desktop', pid: 20}],
-        [3, {wmClass: 'Other', appId: 'org.other.desktop', pid: 30}]]);
+test('verified package ownership shares exceptions across application processes', () => {
+    const windows = new Map([[1, {wmClass: 'OpenLog', verifiedAppId: 'org.openlogi.desktop', ownerPid: 10}],
+        [2, {wmClass: 'Editor', verifiedAppId: 'org.openlogi.desktop', ownerPid: 20}],
+        [3, {wmClass: 'Other', appId: 'org.openlogi.desktop', pid: 10}]]);
     const related = applicationIdentities(windows);
-    assert(matchesApp({...windows.get(2), applicationIdentities: related.get(2)}, ['wm-class:OpenLog']));
-    assert(!matchesApp({...windows.get(3), applicationIdentities: related.get(3)}, ['wm-class:OpenLog']));
-    equal(setAppException([], {...windows.get(2), applicationIdentities: related.get(2)}, true),
-        ['app-id:org.openlogi.desktop']);
+    assert(related.get(2).includes('wm-class:OpenLog'));
+    assert(!related.get(3).includes('wm-class:OpenLog'));
 });
-test('same-process and explicit parent chains inherit application rules without merging unknown clients', () => {
-    const windows = new Map([[1, {wmClass: 'Main', pid: 10}],
-        [2, {wmClass: 'Helper', pid: 10}], [3, {wmClass: 'Dialog', pid: 20, transientFor: 2}],
-        [4, {wmClass: 'Tool', transientFor: 3}], [5, {wmClass: 'Helper', pid: 0}],
-        [6, {wmClass: 'Unknown', pid: 0}], [7, {wmClass: 'Main', pid: -1}]]);
+test('authenticated peer ownership shares rules without trusting declared PIDs', () => {
+    const windows = new Map([[1, {wmClass: 'Main', ownerPid: 10}],
+        [2, {wmClass: 'Helper', ownerPid: 10}],
+        [3, {wmClass: 'Spoof', pid: 10, appId: 'same.desktop', appGroupId: 'same.desktop'}],
+        [4, {wmClass: 'Other', pid: 10, appId: 'same.desktop', appGroupId: 'same.desktop'}]]);
     const related = applicationIdentities(windows);
-    for (const id of [1, 2, 3, 4]) assert(related.get(id).includes('wm-class:Main'));
-    for (const id of [5, 6]) assert(!related.get(id).includes('wm-class:Main'));
-    assert(!related.get(7).includes('wm-class:Helper'), 'Equal class is not an application link');
-    // A native window can retain its known family after its parent closes.
-    windows.delete(1); windows.get(2).applicationIdentities = related.get(2);
-    assert(applicationIdentities(windows).get(4).includes('wm-class:Main'));
+    assert(related.get(2).includes('wm-class:Main'));
+    assert(!related.get(3).includes('wm-class:Main'));
+    assert(!related.get(4).includes('wm-class:Spoof'));
 });
-test('legacy rules become installed application IDs without persisting processes or derived child apps', () => {
-    const windows = new Map([[1, {wmClass: 'Main', appId: 'org.main.desktop', pid: 10}],
-        [2, {wmClass: 'Helper', appId: 'org.helper.desktop', applicationIdentities: ['wm-class:Main']}],
-        [3, {wmClass: 'Unidentified', appGroupId: 'window:3', pid: 11}]]);
-    const rules = ['wm-class:Main', 'wm-class:Unidentified', 'wm-class:Closed'];
-    equal(canonicalAppExceptions(rules, windows),
-        ['app-id:org.main.desktop', 'wm-class:Unidentified', 'wm-class:Closed']);
-    equal(rules, ['wm-class:Main', 'wm-class:Unidentified', 'wm-class:Closed']);
-    equal(canonicalAppExceptions([], windows), []);
-    const updated = canonicalAppExceptions(rules, windows);
-    equal(canonicalAppExceptions(updated, windows), updated);
-    equal(setAppException(updated, windows.get(1), false), ['wm-class:Unidentified', 'wm-class:Closed']);
+test('verified transient children inherit directionally and never affect their parent', () => {
+    const windows = new Map([[1, {wmClass: 'Main', ownerPid: 10}],
+        [2, {wmClass: 'Child', ownerPid: 10, transientFor: 1}],
+        [3, {wmClass: 'Spoof', ownerPid: 20, transientFor: 1}]]);
+    let related = applicationIdentities(windows);
+    assert(related.get(2).includes('wm-class:Main'));
+    assert(!related.get(1).includes('wm-class:Child'));
+    assert(!related.get(3).includes('wm-class:Main'));
+    windows.get(2).transientFor = null; windows.get(2).ownerPid = 20;
+    related = applicationIdentities(windows); assert(!related.get(2).includes('wm-class:Main'));
 });
-test('runtime window-backed groups and cyclic transient links are safe and do not become saved rules', () => {
-    const windows = new Map([[1, {wmClass: 'Main', appGroupId: 'window:1', transientFor: 2}],
-        [2, {wmClass: 'Child', appGroupId: 'window:1', transientFor: 1}]]);
+test('special windows cannot contribute identities to normal application windows', () => {
+    const windows = new Map([[1, {wmClass: 'Main', ownerPid: 10}],
+        [2, {wmClass: 'Special', ownerPid: 10, special: true}],
+        [3, {wmClass: 'Dialog', ownerPid: 10, normal: false}]]);
     const related = applicationIdentities(windows);
-    assert(matchesApp({...windows.get(2), applicationIdentities: related.get(2)}, ['wm-class:Main']));
-    equal(canonicalAppExceptions(['wm-class:Main'], windows), ['wm-class:Main']);
+    assert(!related.get(1).includes('wm-class:Special'));
+    assert(!related.get(1).includes('wm-class:Dialog'));
+});
+test('current identity sets and cyclic parents stay bounded', () => {
+    const windows = new Map(Array.from({length: 500}, (_, i) => [i + 1,
+        {ownerPid: 10, wmClass: `identity-${i}`, transientFor: i === 0 ? 2 : 1}]));
+    for (const values of applicationIdentities(windows).values()) assert(values.length <= 32);
+    const values = boundedIdentities(Array.from({length: 1000}, (_, i) => `wm-class:${i}${'x'.repeat(480)}`));
+    assert(values.length <= 32 && values.reduce((n, s) => n + s.length * 2, 0) <= 8192);
+    equal(boundedIdentities(['x'.repeat(513), 'bad\nline', 'bad\u2028line', 'valid', 'valid']), ['valid']);
+});
+test('OpenLogi Caps Lock keeps its self-only exception even without authenticated ownership', () => {
+    const osd = {wmClass: 'openlogi-lock-key-osd', pid: 999};
+    assert(matchesApp(osd, ['app-id:openlogi.desktop']));
+    assert(matchesApp(osd, ['wm-class:org.openlogi.openlogi']));
+    assert(!matchesApp(osd, []));
+    const related = applicationIdentities(new Map([[1, osd], [2, {pid: 999, wmClass: 'Other'}]]));
+    assert(!related.get(2).includes('app-id:openlogi.desktop'));
+});
+test('oversized direct window metadata is rejected before identity construction', () => {
+    equal(appIdentities({wmClass: 'x'.repeat(2000000), gtkAppId: 'bad\nline'}), []);
+    assert(appIdentities({wmClass: 'x'.repeat(503)}).length === 1);
+    equal(appIdentities({wmClass: 'x'.repeat(504)}), []);
+});
+test('diagnostic logs escape line separators and bound output length', () => {
+    const value = safeLogText('name\n[justtiling] Window capture {}\r\u2028\u2029');
+    assert(!/[\n\r\u2028\u2029]/.test(value)); assert(value.includes('\\u000a'));
+    equal(safeLogText('x'.repeat(20000)).length, 8192);
 });
 
 test('controller balances unsaved sizes even when a new window grabs focus early', () => {

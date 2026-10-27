@@ -1,4 +1,4 @@
-.PHONY: test-native-chooser test-corners test test-shell test-preferences check check-api package test-package submission
+.PHONY: test-security test-native-chooser test-corners test test-shell test-preferences check check-api package test-package submission
 
 test:
 	gjs -m tests/run.js
@@ -30,3 +30,7 @@ submission: package
 
 test-corners:
 	python3 tools/test-corner-shader.py
+
+test-security:
+	python3 tests/build-safety-test.py
+	python3 tests/capture-tool-test.py

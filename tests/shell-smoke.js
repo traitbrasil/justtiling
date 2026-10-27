@@ -79,6 +79,7 @@ class Window extends Signals {
         this.actor = new WindowActor();
     }
     activate(time) { this.activatedAt = time; display.focus_window = this; display.emit('notify::focus-window'); }
+    get_client_type() { return this.clientType ?? Meta.WindowClientType.WAYLAND; }
     get_pid() { return this.pid ?? 0; }
     get_stable_sequence() { return this.id; }
     get_frame_rect() { return this.frame; }
@@ -619,9 +620,13 @@ assert(ext._controller.records.get(11).state === 'tiled', 'Newcomer should fit a
 newcomer.emit('unmanaging'); windows.splice(windows.indexOf(newcomer), 1); await wait(200);
 peer.emit('unmanaging'); windows.splice(windows.indexOf(peer), 1); await wait(200);
 
-// Existing class-based rules upgrade to the installed application identity.
+// Legacy class rules stay intact while verified ownership shares them with helpers.
 // Child windows with distinct classes/processes and untracked same-process
 // windows inherit the rule; unrelated clients with PID 0 remain independent.
+packageFixture.executables.set(100, '/usr/bin/test-openlog-main');
+packageFixture.executables.set(101, '/usr/bin/test-openlog-editor');
+packageFixture.applications.set('/usr/bin/test-openlog-main', 'org.test.OpenLog.desktop');
+packageFixture.applications.set('/usr/bin/test-openlog-editor', 'org.test.OpenLog.desktop');
 const priorRules = settings.get_strv('floating-apps');
 const app = {get_id: () => 'org.test.OpenLog.desktop', is_window_backed: () => false};
 const mainApp = new Window(12); mainApp.app = app; mainApp.pid = 100;
@@ -635,30 +640,33 @@ for (const win of [mainApp, secondary, worker, unrelated]) {
     windows.push(win); display.emit('window-created', win);
 }
 await wait(500);
-assert(settings.get_strv('floating-apps')[0] === 'app-id:org.test.OpenLog.desktop',
-    'Legacy exception should migrate to installed application identity');
+assert(settings.get_strv('floating-apps')[0] === 'wm-class:OpenLogMain',
+    'Runtime metadata must never rewrite a saved legacy exception');
 for (const win of [mainApp, secondary, worker])
     assert(ext._controller.records.get(win.id).reason === 'app-exception', 'Every application window must float');
 assert(ext._controller.records.get(15).state === 'tiled', 'Unrelated application must still tile');
 mainApp.emit('unmanaging'); windows.splice(windows.indexOf(mainApp), 1); await wait(200);
 assert(ext._controller.records.get(13).reason === 'app-exception' &&
     ext._controller.records.get(14).reason === 'app-exception', 'Children must stay floating after main closes');
+const laterWorker = new Window(16); laterWorker.pid = 100; laterWorker.get_wm_class = () => 'LaterUtility';
+windows.push(laterWorker); display.emit('window-created', laterWorker); await wait(200);
+assert(ext._controller.records.get(16).reason === 'app-exception', 'New verified helpers must inherit a surviving rule after the main closes');
 // Removing the rule applies to all surviving windows and is not learned back.
 settings.set_strv('floating-apps', []); await wait(500);
-assert(ext._controller.records.get(13).state === 'tiled' && ext._controller.records.get(14).state === 'tiled',
+assert(ext._controller.records.get(13).state === 'tiled' && ext._controller.records.get(14).state === 'tiled' && ext._controller.records.get(16).state === 'tiled',
     'Removing application rule should reconsider all its normal windows');
 // Tracker metadata may arrive after mapping. Its signal must refresh identity.
 settings.set_strv('floating-apps', ['app-id:org.test.Late.desktop']);
 unrelated.app = {get_id: () => 'org.test.Late.desktop', is_window_backed: () => false};
 tracker.emit(); await wait(200);
 assert(ext._controller.records.get(15).reason === 'app-exception', 'Late tracker identity should apply application rule');
-for (const win of [secondary, worker, unrelated]) {
+for (const win of [secondary, worker, laterWorker, unrelated]) {
     win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1);
 }
 settings.set_strv('floating-apps', priorRules); await wait(200);
 
-// Reproduce the real capture: independent helper, NORMAL, no app ID or
-// transient parent, 360x72, min 1x1, and its desktop process is not running.
+// An independent Wayland helper without a static alias: NORMAL, no app ID
+// or transient parent, 360x72, min 1x1, and no running main application.
 const beforePackageRules = settings.get_strv('floating-apps');
 settings.set_strv('floating-apps', ['wm-class:org.openlogi.openlogi', 'wm-class:local.test.App']);
 await wait(200);
@@ -670,7 +678,7 @@ packageFixture.executables.set(300, '/usr/bin/openlogi-overlay');
 let releasePackage;
 packageFixture.applications.set('/usr/bin/openlogi-overlay', new Promise(resolve => { releasePackage = resolve; }));
 const osd = new Window(17); osd.pid = 300;
-osd.get_wm_class = () => 'openlogi-lock-key-osd';
+osd.get_wm_class = () => 'unidentified-package-helper';
 osd.get_min_size = () => [true, 1, 1];
 osd.frame = {x: 1740, y: 520, width: 360, height: 72};
 windows.push(osd); display.emit('window-created', osd);
@@ -696,6 +704,49 @@ settings.set_strv('floating-apps', []); await wait(500);
 assert(ext._controller.records.get(18).state === 'tiled', 'Removing the app exception should also release package helpers');
 for (const win of [osd, anotherOSD]) { win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1); }
 settings.set_strv('floating-apps', beforePackageRules); await wait(200);
+
+// OpenLogi's audited self-only OSD alias also preserves Caps Lock under
+// XWayland, without trusting that client's declared PID or querying /proc.
+settings.set_strv('floating-apps', ['app-id:openlogi.desktop']);
+const x11OSD = new Window(703); x11OSD.pid = 9999; x11OSD.clientType = Meta.WindowClientType.X11;
+x11OSD.get_wm_class = () => 'openlogi-lock-key-osd';
+x11OSD.frame = {x: 600, y: 400, width: 360, height: 72};
+x11OSD.get_min_size = () => [true, 1, 1];
+windows.push(x11OSD); display.emit('window-created', x11OSD); await wait(500);
+assert(ext._controller.records.get(703).reason === 'app-exception' && x11OSD.moves === 0 &&
+    !x11OSD.above && x11OSD.activatedAt === undefined, 'XWayland Caps Lock OSD must stay native floating without stacking/focus changes');
+x11OSD.emit('unmanaging'); windows.splice(windows.indexOf(x11OSD), 1);
+settings.set_strv('floating-apps', beforePackageRules); await wait(100);
+
+// Security regressions: child metadata and declared X11 PIDs cannot alter a
+// parent's rule classification; observed metadata cannot rewrite preferences.
+const securityRules = settings.get_strv('floating-apps');
+settings.set_strv('floating-apps', ['wm-class:UntrustedChild']);
+const securityParent = new Window(701); securityParent.pid = 701;
+securityParent.get_wm_class = () => 'SecurityParent';
+securityParent.app = {get_id: () => 'security-parent.desktop', is_window_backed: () => false};
+const securityChild = new Window(702); securityChild.pid = 701;
+securityChild.clientType = Meta.WindowClientType.X11;
+securityChild.get_wm_class = () => 'UntrustedChild';
+securityChild.get_transient_for = () => securityParent;
+securityChild.app = {get_id: () => 'security-parent.desktop', is_window_backed: () => false};
+for (const win of [securityParent, securityChild]) { windows.push(win); display.emit('window-created', win); }
+await wait(500);
+assert(ext._controller.records.get(701).state === 'tiled', `Spoofed child must never float the parent: ${JSON.stringify(ext._controller.records.get(701))}`);
+assert(!ext._adapter.applicationSnapshot().get(701).applicationIdentities.includes('wm-class:UntrustedChild'),
+    'Untrusted child/PID/appId must not propagate to parent');
+assert(settings.get_strv('floating-apps')[0] === 'wm-class:UntrustedChild', 'Observed app association must not persist a rule migration');
+for (let i = 0; i < 400; i++) {
+    securityParent.get_wm_class = () => `changing-${i}`;
+    ext._adapter.identitySnapshot = null;
+    const snapshot = ext._adapter.applicationSnapshot();
+    assert(snapshot.get(701).applicationIdentities.length <= 32, 'Current identity set must be bounded');
+    assert(ext._adapter.windows.get(701).retainedRules.length <= 32, 'Rule continuity must be bounded');
+    assert(!snapshot.get(701).applicationIdentities.includes(`wm-class:changing-${i - 1}`),
+        'Old mutable metadata must not accumulate');
+}
+for (const win of [securityParent, securityChild]) { win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1); }
+settings.set_strv('floating-apps', securityRules); await wait(100);
 
 // Real memory GSettings persistence: manual swaps save app-level preferences;
 // toggles/forgetting only affect later insertions, not the existing geometry.

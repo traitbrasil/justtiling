@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate gettext sources and compile deterministic GNU MO catalogs, without external tools."""
+from source_safety import check_inputs
 import argparse
 import gettext
 import io
@@ -61,6 +62,7 @@ def compile_mo(entries):
 
 
 def compile_catalogs(destination):
+    check_inputs(ROOT)
     messages = source_messages()
     template = read_po(ROOT / 'po' / f'{DOMAIN}.pot')
     if set(template) - {''} != messages:

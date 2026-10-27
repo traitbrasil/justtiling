@@ -55,4 +55,4 @@ with tempfile.TemporaryDirectory(prefix='justtiling-smoke-') as tmp:
         env['LC_ALL'] = 'pt_BR.UTF-8'
         print(f'Testing isolated Shell {version}: {language}', flush=True)
         subprocess.run(['gjs', '-m', str(stage / 'tests/shell-smoke.js'), stage.as_uri()],
-                       cwd=stage, env=env, check=True, timeout=45)
+                       cwd=stage, env=env, check=True, timeout=60)

@@ -2,6 +2,7 @@
 """Offline validation of the public submission ZIP. Never install or contact Shell."""
 import hashlib
 import json
+from source_safety import check_inputs
 from pathlib import Path
 import posixpath
 import re
@@ -11,6 +12,7 @@ import tempfile
 from translations import compile_catalogs, DOMAIN
 
 root = Path(__file__).resolve().parents[1]
+check_inputs(root)
 metadata = json.loads((root / 'metadata.json').read_text())
 archive = root / 'dist' / f"trait-justtiling-{metadata['version-name']}.zip"
 assert metadata['uuid'] == 'justtiling@trait.com.br', 'Unexpected public UUID'

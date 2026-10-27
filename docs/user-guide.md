@@ -42,7 +42,7 @@ To make an application always float:
 2. Open the Trait JustTiling panel menu.
 3. Enable **Always float this application**.
 
-The rule applies to windows recognized as belonging to that application. Explicit child windows, native application identity, and supported helper identification can establish the association. Helpers with no unambiguous identity may need a separate exception.
+The rule applies to windows recognized as belonging to that application. Verified native Wayland process ownership and supported installed-package identification can share rules with related windows. Dialogs remain floating; a child’s metadata never changes its parent’s classification. Existing rules stay saved exactly as selected and are never migrated from observed window metadata. Helpers with no verified association may need a separate exception, especially with XWayland clients whose declared process IDs are not trusted for inheritance.
 
 Remove a persistent rule in **Preferences → Always-floating applications**. Super+G is useful for an individual, temporary choice; it cannot force an incompatible window to fit.
 
