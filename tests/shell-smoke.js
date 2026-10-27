@@ -808,11 +808,28 @@ settings.set_boolean('debug', true);
 const flash = new Window(16); flash.pid = 0;
 windows.push(flash); display.emit('window-created', flash);
 flash.emit('unmanaging'); windows.splice(windows.indexOf(flash), 1);
+await wait(100);
 assert(captures.some(info => info.id === 16 && info.event === 'created' && info.type === 'NORMAL'),
     'Capture must observe transiently visible normal windows before reconciliation');
 assert(captures.every(info => 'role' in info && 'clientType' in info && 'frameType' in info),
     'Capture must report role, client protocol and decoration type without page content');
 assert(captures.every(info => !('title' in info) && !('arguments' in info)), 'Capture should omit titles and arguments');
+const procWindow = new Window(160);
+procWindow.pid = new Gio.Credentials().get_unix_pid();
+await ext._adapter.traceWindow(procWindow, 'async-proc');
+const procCapture = captures.find(info => info.id === 160);
+assert(procCapture?.lineage[0]?.pid === procWindow.pid && procCapture.lineage[0].executable?.startsWith('/'),
+    'Async GIO must read the real process status and executable link');
+const disposedCapture = new ext._adapter.constructor();
+disposedCapture.traceWindows = true;
+let lateCaptureLogs = 0;
+disposedCapture.log = () => lateCaptureLogs++;
+const pendingCapture = disposedCapture.traceWindow(procWindow, 'cancelled');
+assert(disposedCapture.traceJobs.size === 1, 'Capture must track pending IO');
+disposedCapture.dispose();
+await pendingCapture;
+assert(disposedCapture.traceJobs.size === 0 && lateCaptureLogs === 0,
+    'Disable must cancel pending GIO and suppress late capture output');
 settings.reset('debug');
 assert(!ext._adapter.traceWindows, 'Capture must stop when debug resets');
 ext._adapter.log = oldLog;

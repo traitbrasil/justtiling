@@ -10,7 +10,7 @@
 
 Check your Shell version with `gnome-shell --version`. Other GNOME versions are outside the current support scope.
 
-Version 0.30.1 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
+Version 0.30.2 is being prepared for its first GNOME Extensions submission. There is no approved store listing linked from this repository yet. While the repository is private, cloning requires authorized GitHub access.
 
 ## Build and install
 
@@ -18,7 +18,7 @@ Version 0.30.1 is being prepared for its first GNOME Extensions submission. Ther
 git clone https://github.com/traitbrasil/justtiling.git
 cd justtiling
 make package
-gnome-extensions install --force dist/trait-justtiling-0.30.1.zip
+gnome-extensions install --force dist/trait-justtiling-0.30.2.zip
 ```
 
 `make package` checks syntax and schemas, runs the pure tests, compiles translations, and creates the ZIP. It does not install or enable the extension.
@@ -41,7 +41,7 @@ From your checkout:
 git pull --ff-only
 make package
 gnome-extensions disable justtiling@trait.com.br
-gnome-extensions install --force dist/trait-justtiling-0.30.1.zip
+gnome-extensions install --force dist/trait-justtiling-0.30.2.zip
 ```
 
 Log out and back in, then run:
@@ -66,7 +66,7 @@ Disable `just@trait.com.br` before installing the new UUID:
 
 ```bash
 gnome-extensions disable just@trait.com.br
-gnome-extensions install --force dist/trait-justtiling-0.30.1.zip
+gnome-extensions install --force dist/trait-justtiling-0.30.2.zip
 ```
 
 Log out and back in, then enable the new extension:

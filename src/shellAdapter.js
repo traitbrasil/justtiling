@@ -3,6 +3,7 @@ import {_} from './i18n.js';
 import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js';
@@ -29,6 +30,7 @@ export class ShellAdapter {
             () => this.emit('changed'));
         this.identitySnapshot = null;
         this.traceWindows = false;
+        this.traceJobs = new Set();
         this.floatingRules = [];
         this.monitorPreferences = new Gio.Settings({schema_id: 'org.gnome.mutter'});
     }
@@ -169,18 +171,15 @@ export class ShellAdapter {
             for (const {win} of this.windows.values()) this.traceWindow(win, event);
     }
 
-    traceWindow(win, event) {
+    async traceWindow(win, event) {
         if (!this.traceWindows) return;
+        const cancellable = new Gio.Cancellable();
+        this.traceJobs.add(cancellable);
         try {
             const app = this.tracker.get_window_app(win);
             const pid = win.get_pid();
-            const lineage = processLineage(pid, key => {
-                const [, bytes] = Gio.File.new_for_path(`/proc/${key}/status`).load_contents(null);
-                return new TextDecoder().decode(bytes);
-            }, key => Gio.File.new_for_path(`/proc/${key}/exe`).query_info(
-                'standard::symlink-target', Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_symlink_target());
             const info = {
-                event, id: win.get_stable_sequence(), pid, lineage,
+                event, id: win.get_stable_sequence(), pid,
                 wmClass: win.get_wm_class(), wmInstance: win.get_wm_class_instance(),
                 role: win.get_role(), clientType: win.get_client_type(), frameType: win.get_frame_type(),
                 gtkAppId: win.get_gtk_application_id(), sandboxId: win.get_sandboxed_app_id(),
@@ -195,9 +194,28 @@ export class ShellAdapter {
                 above: win.is_above(), frame: plainRect(win.get_frame_rect()),
                 minimum: win.get_min_size(), maximum: win.get_max_size(),
             };
+            // Capture Meta data before yielding: the window may close during IO.
+            info.lineage = await processLineage(pid, key => new Promise((resolve, reject) => {
+                Gio.File.new_for_path(`/proc/${key}/status`).load_contents_async(cancellable, (file, result) => {
+                    try {
+                        const [, bytes] = file.load_contents_finish(result);
+                        resolve(new TextDecoder().decode(bytes));
+                    } catch (error) { reject(error); }
+                });
+            }), key => new Promise((resolve, reject) => {
+                Gio.File.new_for_path(`/proc/${key}/exe`).query_info_async(
+                    'standard::symlink-target', Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
+                    GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
+                        try { resolve(file.query_info_finish(result).get_symlink_target()); }
+                        catch (error) { reject(error); }
+                    });
+            }), () => cancellable.is_cancelled());
+            if (cancellable.is_cancelled() || !this.traceWindows) return;
             this.log('info', `Window capture ${JSON.stringify(info)}`);
         } catch (error) {
-            this.log('warn', `Window capture unavailable: ${error.message}`);
+            if (!cancellable.is_cancelled()) this.log('warn', `Window capture unavailable: ${error.message}`);
+        } finally {
+            this.traceJobs.delete(cancellable);
         }
     }
 
@@ -393,6 +411,9 @@ export class ShellAdapter {
         for (const {signals} of this.windows.values()) signals.clear();
     }
     dispose() {
+        for (const job of this.traceJobs) job.cancel();
+        this.traceJobs.clear();
+        this.traceWindows = false;
         this.packageIdentity.dispose();
         this.packageLookup.dispose();
         this.stopObserving();

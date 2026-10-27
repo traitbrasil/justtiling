@@ -24,7 +24,8 @@ with tempfile.TemporaryDirectory(prefix='justtiling-build-') as tmp:
     (stage / 'schemas').mkdir()
     for source in (root / 'schemas').glob('*.gschema.xml'):
         shutil.copyfile(source, stage / 'schemas' / source.name)
-    subprocess.run(['glib-compile-schemas', '--strict', str(stage / 'schemas')], check=True)
+    # GNOME 45+ compiles schemas during installation; validate without shipping the cache.
+    subprocess.run(['glib-compile-schemas', '--strict', '--dry-run', str(stage / 'schemas')], check=True)
     with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for source in sorted(stage.rglob('*')):
             if source.is_file():
@@ -34,5 +35,5 @@ with tempfile.TemporaryDirectory(prefix='justtiling-build-') as tmp:
                 archive.writestr(info, source.read_bytes())
 with zipfile.ZipFile(output) as archive:
     assert archive.testzip() is None
-    assert 'schemas/gschemas.compiled' in archive.namelist()
+    assert 'schemas/gschemas.compiled' not in archive.namelist()
 print(f'Created {output} ({output.stat().st_size} bytes). Not installed or activated.')

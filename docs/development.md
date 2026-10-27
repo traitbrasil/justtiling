@@ -26,7 +26,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.30.1 pure suite has 247 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.30.2 pure suite has 248 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -55,11 +55,26 @@ When changing visible text, update source markers and catalogs together. Keep `%
 
 To add another language, add its complete `<locale>.po` catalog under `po/` and verify the compiled interface in that locale. The current isolated UI runners explicitly exercise English and Portuguese.
 
+## GitHub connection in Codex
+
+The working remote connection for `traitbrasil/justtiling` is the authenticated **GitHub connector in Codex**. It was used to publish 0.30.1 and is the preferred path for subsequent Codex sessions. Authentication in Chrome or the connector does not configure terminal Git. In this environment, terminal HTTPS has no credentials, `gh` is unavailable, and SSH has no trusted GitHub host key. Keep `origin` at `https://github.com/traitbrasil/justtiling.git`; do not export connector credentials or weaken SSH checks.
+
+For an authorized publication to `main`:
+
+1. Review `git status`, the diff, and the required checks. Commit the intended files locally. Read the current remote `refs/heads/main` through the connector's `fetch` tool and confirm it is the expected parent. If the branch moved, reconcile the new changes before publishing.
+2. Build a manifest from the committed Git objects, using `git diff-tree` and `git show HEAD:path`, rather than copying uncommitted working files. Include each changed path, Git mode and UTF-8 content; represent deletions with a null SHA. For binary files, use the connector's blob tool with base64 content and reference the resulting blob SHA.
+3. Use the connector's `create_tree` tool with the parent's tree as `base_tree_sha`. Confirm the returned tree SHA equals the intended local commit's tree SHA. Then use `create_commit` with that tree, the verified remote parent, and the intended message.
+4. Update `main` through `update_ref`, with `expected_sha` set to the parent read in step 1 and `force=false`. If the update fails because the head changed, inspect the branch again before retrying. Re-read the remote ref and Git commit to verify the published SHA, parent and tree.
+5. Synchronize local Git with the exact remote commit. The API sets commit identity/timestamps, so its SHA can differ from the original local commit despite identical files. When terminal fetch is unavailable, reconstruct the unsigned commit object from the connector's Git commit response (`tree`, ordered `parents`, `author`, `committer`, `message`). Verify its Git object hash matches the remote SHA **before** writing it with `git hash-object -w -t commit --stdin`. If the response is signed or cannot be reproduced exactly, stop and obtain the object through an authenticated fetch instead.
+6. With a clean working tree and matching tree SHA, move local `refs/heads/main` using `git update-ref` with its previous SHA as a guard, then update `refs/remotes/origin/main` to the verified remote SHA. Confirm `git status --short` is empty and `git rev-list --left-right --count main...origin/main` reports `0 0`. Do not reset files or force the remote branch.
+
+The connector's tools can be discovered by searching tool metadata for GitHub `fetch`, `create_tree`, `create_blob`, `create_commit`, and `update_ref`. Do not assume a successful browser login enables `git push`. GitHub Releases and ZIP uploads are separate operations and require their own user request.
+
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.30.1.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.30.2.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
-Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
+Do not package logs, tests, tools, backups, local preferences, or `gschemas.compiled`. For GNOME 45+, ship the schema XML only; GNOME compiles it during installation. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 
 For manual installation, use the [installation guide](installation.md). Before a GNOME Extensions submission, review the [official guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html). Neither building nor running the isolated suite installs or publishes the extension.
 

@@ -26,7 +26,7 @@ assert metadata['gettext-domain'] == DOMAIN
 with tempfile.TemporaryDirectory(prefix='trait-catalog-check-') as tmp:
     compile_catalogs(Path(tmp) / 'locale')
     catalogs = {p.relative_to(tmp).as_posix(): p.read_bytes() for p in Path(tmp).rglob('*.mo')}
-required = {'metadata.json', 'extension.js', 'prefs.js', 'LICENSE', 'schemas/gschemas.compiled'}
+required = {'metadata.json', 'extension.js', 'prefs.js', 'LICENSE'}
 required.update(p.relative_to(root).as_posix() for p in (root / 'src').rglob('*.js'))
 required.update(p.relative_to(root).as_posix() for p in (root / 'schemas').glob('*.gschema.xml'))
 required.update(catalogs)
@@ -36,7 +36,7 @@ with zipfile.ZipFile(archive) as package:
     assert json.loads(package.read('metadata.json')) == metadata
     for name, binary in catalogs.items():
         assert package.read(name) == binary, f'Stale translation: {name}'
-    for name in required - {'schemas/gschemas.compiled'} - set(catalogs):
+    for name in required - set(catalogs):
         assert package.read(name) == (root / name).read_bytes(), f'Stale packaged source: {name}'
     schema_file = f"schemas/{metadata['settings-schema']}.gschema.xml"
     schema = ET.fromstring(package.read(schema_file)).find('schema')

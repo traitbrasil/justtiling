@@ -72,17 +72,26 @@ test('package ownership requires one exact owner and rejects diversions, glob ma
     equal(desktopFiles('/usr/share/applications/tool.desktop\n/usr/share/doc/readme.desktop\n/usr/share/applications/sub/hidden.desktop\n/usr/share/applications/tool.desktop'),
         ['/usr/share/applications/tool.desktop']);
 });
-test('process capture follows helper ancestry without reading arguments and tolerates exited processes', () => {
+await asyncTest('process capture follows helper ancestry without reading arguments and tolerates exited processes', async () => {
     const status = new Map([[30, 'Name: overlay\nPPid: 20\n'], [20, 'Name: agent\nPPid: 10\n'], [10, 'PPid: 1\n']]);
-    equal(processLineage(30, id => status.get(id), id => `/usr/bin/app-${id}`), [
+    equal(await processLineage(30, async id => status.get(id), async id => `/usr/bin/app-${id}`), [
         {pid: 30, parent: 20, executable: '/usr/bin/app-30'},
         {pid: 20, parent: 10, executable: '/usr/bin/app-20'},
         {pid: 10, parent: 1, executable: '/usr/bin/app-10'}]);
-    equal(processLineage(0, () => { throw Error(); }, () => { throw Error(); }), []);
-    equal(processLineage(99, () => { throw Error(); }, () => { throw Error(); }),
+    equal(await processLineage(0, () => { throw Error(); }, () => { throw Error(); }), []);
+    equal(await processLineage(99, async () => { throw Error(); }, async () => { throw Error(); }),
         [{pid: 99, parent: 0, executable: null}]);
-    equal(processLineage(10, () => 'PPid: 10', () => null).length, 1);
-    equal(processLineage(100, id => `PPid: ${id + 1}`, () => null).length, 12);
+    equal((await processLineage(10, async () => 'PPid: 10', async () => null)).length, 1);
+    equal((await processLineage(100, async id => `PPid: ${id + 1}`, async () => null)).length, 12);
+});
+await asyncTest('process capture stops pending ancestry reads on cancellation', async () => {
+    let finish, cancelled = false, executableReads = 0;
+    const pending = processLineage(30, () => new Promise(resolve => { finish = resolve; }),
+        async () => { executableReads++; return '/usr/bin/helper'; }, () => cancelled);
+    cancelled = true;
+    finish('PPid: 20');
+    equal(await pending, []);
+    equal(executableReads, 0);
 });
 
 test('one window fills usable area, without fullscreen', () => {
