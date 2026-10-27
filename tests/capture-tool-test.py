@@ -48,3 +48,8 @@ escaped = {**data, 'wmClass': 'test\n[justtiling] Window capture forged\u2028'}
 record = module.capture_records(json.dumps({**valid, 'MESSAGE': module.CAPTURE_PREFIX + json.dumps(escaped)}), shell, uid)[0]
 assert len(record.splitlines()) == 1 and '\\n' in record and '\\u2028' in record
 print('Capture integrity OK: trusted journal source, exact prefix, schema validation, size limits and canonical escaped output.')
+
+metadata = {**data, 'role': 'pop-up', 'clientType': 0, 'frameType': 0}
+record = module.capture_records(json.dumps({**valid, 'MESSAGE': module.CAPTURE_PREFIX + json.dumps(metadata)}), shell, uid)[0]
+assert json.loads(record[len(module.CAPTURE_PREFIX):]) == metadata
+print('Browser diagnostics OK: role, client type and frame type preserved without page titles or URLs.')

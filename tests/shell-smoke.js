@@ -79,6 +79,8 @@ class Window extends Signals {
         this.actor = new WindowActor();
     }
     activate(time) { this.activatedAt = time; display.focus_window = this; display.emit('notify::focus-window'); }
+    get_role() { return this.role ?? null; }
+    get_frame_type() { return Meta.FrameType.NORMAL; }
     get_client_type() { return this.clientType ?? Meta.WindowClientType.WAYLAND; }
     get_pid() { return this.pid ?? 0; }
     get_stable_sequence() { return this.id; }
@@ -427,6 +429,26 @@ w5.emit('position-changed'); display.emit('grab-op-end', w5, Meta.GrabOp.KEYBOAR
 await wait(500);
 assert(w1.frame.width === leftWidth + 60 && w5.frame.width === rightWidth - 60,
     'Keyboard resize enum lost its shared boundary');
+// A pinned outer edge must not silently opt out of tiling and expand its neighbor.
+const learnedBeforeOuterResize = settings.get_string('learned-layouts');
+ext._controller.togglePin(w1.id); await wait(100);
+const pinnedOuterStart = {...w1.frame}, pinnedOuterNeighbor = {...w5.frame};
+display.emit('grab-op-begin', w1, Meta.GrabOp.RESIZING_N);
+assert(ext._controller.resize?.pinKey, 'Pinned top edge needs a managed resize context');
+w1.frame = {...w1.frame, y: w1.frame.y + 32, height: w1.frame.height - 32};
+w1.emit('size-changed');
+display.emit('grab-op-end', w1, Meta.GrabOp.RESIZING_N); await wait(500);
+assert(ext._controller.records.get(w1.id).state === 'tiled' &&
+    ext._controller.records.get(w5.id).state === 'tiled' && w5.frame.width === pinnedOuterNeighbor.width,
+    'Pinned outer resize must preserve both grid participants');
+assert(w1.frame.y === pinnedOuterStart.y + 32 && w1.frame.height === pinnedOuterStart.height - 32 &&
+    Object.values(JSON.parse(settings.get_string('pinned-layouts')).apps)[0].y > 0,
+    'Successful outer resize must persist its new pin after native convergence');
+display.emit('grab-op-begin', w1, Meta.GrabOp.RESIZING_N);
+w1.frame = {...pinnedOuterStart}; w1.emit('size-changed');
+display.emit('grab-op-end', w1, Meta.GrabOp.RESIZING_N); await wait(500);
+ext._controller.togglePin(w1.id); await wait(100);
+settings.set_string('learned-layouts', learnedBeforeOuterResize); await wait(100);
 // Mouse moves preview compatible destinations; geometry only swaps on release.
 assert(settings.get_boolean('drag-swap'), 'Drag swap should default on');
 const beforeSwap1 = {...w1.frame}, beforeSwap5 = {...w5.frame};
@@ -788,10 +810,50 @@ windows.push(flash); display.emit('window-created', flash);
 flash.emit('unmanaging'); windows.splice(windows.indexOf(flash), 1);
 assert(captures.some(info => info.id === 16 && info.event === 'created' && info.type === 'NORMAL'),
     'Capture must observe transiently visible normal windows before reconciliation');
+assert(captures.every(info => 'role' in info && 'clientType' in info && 'frameType' in info),
+    'Capture must report role, client protocol and decoration type without page content');
 assert(captures.every(info => !('title' in info) && !('arguments' in info)), 'Capture should omit titles and arguments');
 settings.reset('debug');
 assert(!ext._adapter.traceWindows, 'Capture must stop when debug resets');
 ext._adapter.log = oldLog;
+
+const browserPopup = new Window(601, 198); browserPopup.pid = 0;
+browserPopup.get_wm_class = () => 'google-chrome';
+browserPopup.get_wm_class_instance = () => null;
+browserPopup.app = {get_id: () => 'google-chrome.desktop', is_window_backed: () => false};
+const browserPopupOriginal = {...browserPopup.frame};
+windows.push(browserPopup); display.emit('window-created', browserPopup); await wait(500);
+assert(settings.get_boolean('float-browser-popups') && ext._controller.records.get(601).reason === 'browser-popup' &&
+    browserPopup.frame.width === browserPopupOriginal.width && browserPopup.moves === 0,
+    'Detected popup must keep its native opening geometry without a persistent app exception');
+settings.set_boolean('float-browser-popups', false); await wait(500);
+assert(ext._controller.records.get(601).state === 'tiled', 'Disabling popup detection must rejoin the grid');
+settings.set_boolean('float-browser-popups', true); await wait(500);
+assert(ext._controller.records.get(601).reason === 'browser-popup', 'Reenabling detection must float the popup again');
+browserPopup.emit('unmanaging'); windows.splice(windows.indexOf(browserPopup), 1); await wait(100);
+const firefoxMain = new Window(602, 552), firefoxPopup = new Window(603, 232);
+for (const win of [firefoxMain, firefoxPopup]) {
+    win.pid = 0;
+    win.get_wm_class = () => 'firefox_firefox';
+    win.get_wm_class_instance = () => null;
+    win.app = {get_id: () => 'firefox_firefox.desktop', is_window_backed: () => false};
+    win.get_min_size = () => [true, win === firefoxMain ? 552 : 232, win === firefoxMain ? 172 : 184];
+    windows.push(win); display.emit('window-created', win);
+}
+await wait(500);
+assert(ext._controller.records.get(602).state === 'tiled' &&
+    ext._controller.records.get(603).reason === 'browser-popup' && firefoxPopup.moves === 0,
+    'Firefox Snap popup must float at its native size while its main window remains tiled');
+settings.set_boolean('float-browser-popups', false); await wait(500);
+assert(ext._controller.records.get(603).state === 'tiled', 'Firefox popup must follow the optional preference');
+settings.set_boolean('float-browser-popups', true); await wait(500);
+assert(ext._controller.records.get(603).reason === 'browser-popup', 'Firefox detection must resume when enabled');
+for (const win of [firefoxMain, firefoxPopup]) {
+    win.emit('unmanaging'); windows.splice(windows.indexOf(win), 1);
+}
+await wait(100);
+
+
 
 // Optional rounded corners decorate every application window independently of focus/tiling.
 const roundedName = 'justtiling-rounded-corners';

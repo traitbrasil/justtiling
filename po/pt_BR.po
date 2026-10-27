@@ -360,3 +360,9 @@ msgstr "Mostrar layouts ao arrastar"
 
 msgid "This layout region is unavailable for this window."
 msgstr "Esta área do layout está indisponível para esta janela."
+
+msgid "Float browser pop-ups"
+msgstr "Deixar pop-ups dos navegadores flutuantes"
+
+msgid "Detects likely Chrome, Chromium and Firefox pop-ups by their minimum size. Turn off if a normal window is misidentified."
+msgstr "Identifica prováveis pop-ups do Chrome, Chromium e Firefox pelo tamanho mínimo. Desative se uma janela normal for identificada incorretamente."

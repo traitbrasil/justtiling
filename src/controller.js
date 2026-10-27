@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {N_} from './strings.js';
 import {ids, remove, sameRect, solve} from './layout/tree.js';
-import {appIdentities, constraints, exclusion, matchesApp} from './rules.js';
+import {appIdentities, constraints, exclusion, isBrowserPopup, matchesApp} from './rules.js';
 import {learningIdentity, learningMatch, normalizedFrame, uniqueLearningKey} from './learning.js';
 import {beginDrag, finishDrag, swapTiles, directionalNeighbor} from './layout/drag.js';
-import {beginResize, finishResize, sameSpecs} from './layout/resize.js';
+import {anchoredResize, beginResize, finishResize, sameSpecs} from './layout/resize.js';
 
 import {dragMoved, insideBar, layoutBarGeometry, layoutHit, presetFrame} from './layout/presets.js';
 import {balancedLayout, comfortableLearning, insertBalanced} from './layout/balance.js';
@@ -37,6 +37,7 @@ export class Controller {
         this.debug = false;
         this.onStateChanged = null;
         this.resizeSplits = true;
+        this.floatBrowserPopups = true;
         this.dragSwap = true;
         this.layoutAssistant = false;
         this.assistantVisible = false;
@@ -491,6 +492,22 @@ export class Controller {
         if (!goals.size || ids(next).length < 2) return next;
         const learned = pinnedLayout(next, goals, area, specs, gaps,
             (part, region) => balancedLayout(part, region, specs, {inner: gaps.inner, outer: 0}));
+        const covered = layout => [...solve(layout, area, specs, gaps).frames.values()]
+            .reduce((sum, rect) => sum + rect.width * rect.height, 0);
+        // Learned sizes are soft preferences. They must not reserve substantial
+        // unused space when the available region could be filled by these apps.
+        if (covered(learned) < covered(next) * 0.98) return next;
+        const localWidth = area.width - 2 * gaps.outer, localHeight = area.height - 2 * gaps.outer;
+        const learnedPlan = solve(learned, area, specs, gaps);
+        // If a learned region cannot coexist with these windows, do not keep a
+        // compressed approximation that consumes most of an otherwise free grid.
+        // Explicit pins are fitted separately; saved learning remains untouched.
+        const compressed = [...goals].some(([id, goal]) => {
+            const frame = learnedPlan.frames.get(id);
+            return frame.width < Math.round(goal.width * localWidth) - 1 ||
+                frame.height < Math.round(goal.height * localHeight) - 1;
+        });
+        if (compressed) return balancedLayout(tree, area, specs, gaps, true);
         const ordinary = new Set(ids(next).filter(id => !goals.has(id) &&
             !this.activePin(this.adapter.read(id))));
         return comfortableLearning(next, learned, goals, area, specs, gaps, ordinary, withoutReservations(learned));
@@ -524,7 +541,8 @@ export class Controller {
         const data = this.adapter.read(r.id);
         if (exclusion(data) || !data.ready || data.maximized) return false;
         const specs = this.layoutSpecs();
-        const context = beginResize(this.tree, r.id, edges, data.rect, this.adapter.area(), specs, this.gaps);
+        const context = beginResize(this.tree, r.id, edges, data.rect, this.adapter.area(), specs, this.gaps) ??
+            this.beginPinnedResize(r.id, edges, data.rect, specs);
         if (!context) return false;
         this.resize = {...context, domain: this.domain, rules: [...this.floatingApps]};
         r.grabbed = true;
@@ -535,6 +553,31 @@ export class Controller {
         this.due = Infinity;
         this.adapter.log('info', `Split resize started ${r.id}: ${edges.join(',')}`);
         return true;
+    }
+
+    beginPinnedResize(id, edges, frame, specs) {
+        const pinKey = this.activePin(this.adapter.read(id));
+        if (!pinKey || !this.pinGoals().has(id) || !anchoredResize(frame, frame, edges)) return null;
+        const area = this.adapter.area(), plan = solve(this.tree, area, specs, this.gaps);
+        if (!plan || !sameRect(frame, plan.frames.get(id), 1)) return null;
+        return {tree: this.tree, id, frame: {...frame}, area: {...area}, gaps: {...this.gaps},
+            specs: new Map(specs), plan, edges: [...edges], pinKey, pins: JSON.stringify(this.pinnedLayouts)};
+    }
+
+    finishPinnedResize(context, frame) {
+        const unchanged = {tree: context.tree, plan: context.plan};
+        if (!anchoredResize(context.frame, frame, context.edges) || sameRect(context.frame, frame, 1)) return unchanged;
+        const goal = normalizedFrame(frame, context.area, context.gaps);
+        if (!goal || goal.x + goal.width > 1.00001 || goal.y + goal.height > 1.00001) return unchanged;
+        const goals = this.pinGoals();
+        goals.set(context.id, goal);
+        const tree = pinnedLayout(context.tree, goals, context.area, context.specs, context.gaps,
+            (part, region) => this.preferredBalance(part, region, context.specs,
+                {inner: context.gaps.inner, outer: 0}));
+        const plan = solve(tree, context.area, context.specs, context.gaps);
+        // Reject a region that cannot coexist with the other windows. Keep the
+        // old pin and grid instead of silently creating a floating override.
+        return plan && sameRect(plan.frames.get(context.id), frame, 1) ? {tree, plan} : unchanged;
     }
 
     validResize(context) {
@@ -571,15 +614,17 @@ export class Controller {
             this.cancelSplitResize('resize-context-changed');
             return;
         }
-        const result = finishResize(context, this.adapter.read(context.id).rect);
+        const frame = this.adapter.read(context.id).rect;
+        const result = context.pinKey ? this.finishPinnedResize(context, frame) : finishResize(context, frame);
         if (!result) {
             this.cancelSplitResize('unsupported-resize');
             return;
         }
         this.resize = null;
         this.tree = result.tree;
-        if (result.tree !== context.tree) this.queueLearning([...result.plan.frames.keys()].filter(id =>
-            !sameRect(result.plan.frames.get(id), context.plan.frames.get(id), 1)));
+        if (result.tree !== context.tree) this.queueLearning(context.pinKey ? [context.id] :
+            [...result.plan.frames.keys()].filter(id =>
+                !sameRect(result.plan.frames.get(id), context.plan.frames.get(id), 1)));
         for (const id of ids(this.tree)) this.records.get(id).request = null;
         this.adapter.log('info', `Split resize applied ${context.id}`);
         this.schedule(0);
@@ -857,7 +902,8 @@ export class Controller {
                 continue;
             }
             if (r.state === 'pending' && maximizedEligible && r.override !== 'floating' &&
-                (r.override === 'tiled' || !matchesApp(d, this.floatingApps))) {
+                (r.override === 'tiled' || (!matchesApp(d, this.floatingApps) &&
+                    !(this.floatBrowserPopups && isBrowserPopup(d))))) {
                 if (paused) continue;
                 this.capture(r);
                 r.touched = true;
@@ -919,13 +965,14 @@ export class Controller {
                 if (r.state !== 'floating') this.float(r, 'user-toggle');
                 continue;
             }
-            const byApp = r.override !== 'tiled' && matchesApp(d, this.floatingApps);
-            if (byApp && (r.state !== 'floating' || r.reason === 'app-exception')) {
-                if (r.reason !== 'app-exception' || r.state !== 'floating')
-                    this.float(r, 'app-exception');
+            const automatic = r.override === 'tiled' ? null : matchesApp(d, this.floatingApps) ?
+                'app-exception' : this.floatBrowserPopups && isBrowserPopup(d) ? 'browser-popup' : null;
+            const managedException = ['app-exception', 'browser-popup'].includes(r.reason);
+            if (automatic && (r.state !== 'floating' || managedException)) {
+                if (r.reason !== automatic || r.state !== 'floating') this.float(r, automatic);
                 continue;
             }
-            if (!byApp && r.state === 'floating' && r.reason === 'app-exception') {
+            if (!automatic && r.state === 'floating' && managedException) {
                 this.release(r, true);
                 r.state = 'pending';
                 r.born = now;

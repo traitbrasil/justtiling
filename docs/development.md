@@ -26,7 +26,7 @@ Package-identity smoke tests use the local installed-package database where avai
 | `make package` | Run syntax/schema and pure tests, then build the installable ZIP |
 | `make submission` | Build and validate the exact GNOME submission ZIP and write a SHA-256 file |
 
-The 0.30.0 pure suite has 236 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
+The 0.30.1 pure suite has 247 tests. Integration checks complement those tests; they do not replace manual testing in a dedicated GNOME account or VM.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ To add another language, add its complete `<locale>.po` catalog under `po/` and 
 
 ## Packaging and release scope
 
-`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.30.0.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
+`tools/build.py` stages the runtime in a temporary directory and creates `dist/trait-justtiling-0.30.1.zip`. `tools/check-submission.py` verifies the package against current sources, translation catalogs, metadata, schema, and import boundaries.
 
 Do not package logs, tests, tools, backups, or local preferences. The UUID is `justtiling@trait.com.br`; the settings schema remains `org.gnome.shell.extensions.justtiling`. Keep numeric `version` absent in the submission source because GNOME Extensions assigns it; `version-name` is the human-readable release.
 

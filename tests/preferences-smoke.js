@@ -118,6 +118,12 @@ assert(ui.controls['preserve-focused-window'].active, 'Focus size preservation m
 assert(ui.controls['layout-assistant'].active, 'Layout presets must be enabled by default and optional');
 assert(ui.controls['layout-assistant'].title === (english ? 'Show layout presets when dragging' : 'Mostrar layouts ao arrastar'),
     'Layout assistant option must be translated');
+assert(ui.controls['float-browser-popups'].active, 'Browser popup detection must default on');
+assert(ui.controls['float-browser-popups'].title === (english ? 'Float browser pop-ups' : 'Deixar pop-ups dos navegadores flutuantes'), 'Browser popup preference must be translated');
+ui.controls['float-browser-popups'].active = false;
+assert(!settings.get_boolean('float-browser-popups'), 'Popup switch must save its disabled value');
+settings.set_boolean('float-browser-popups', true);
+assert(ui.controls['float-browser-popups'].active, 'Popup switch must track external settings');
 assert(!ui.controls['hide-panel-icon'].active, 'The panel icon must remain visible by default');
 assert(ui.controls['hide-panel-icon'].title === (english ? 'Hide the panel icon' : 'Ocultar ícone do painel'),
     'Panel icon preference must follow the session language');

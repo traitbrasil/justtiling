@@ -42,6 +42,7 @@ export default class JustTiling extends Extension {
             this._controller.debug = this._settings.get_boolean('debug');
             this._adapter.traceWindows = this._controller.debug;
             this._controller.resizeSplits = this._settings.get_boolean('resize-splits');
+            this._controller.floatBrowserPopups = this._settings.get_boolean('float-browser-popups');
             this._controller.layoutAssistant = this._settings.get_boolean('layout-assistant');
             this._controller.dragSwap = this._settings.get_boolean('drag-swap');
             this._controller.insertionSide = this._settings.get_string('new-window-side');
@@ -108,6 +109,7 @@ export default class JustTiling extends Extension {
                     this._controller.floatingApps = this._settings.get_strv('floating-apps');
                     this._controller.debug = this._settings.get_boolean('debug');
                     this._controller.resizeSplits = this._settings.get_boolean('resize-splits');
+                    this._controller.floatBrowserPopups = this._settings.get_boolean('float-browser-popups');
                     this._controller.layoutAssistant = this._settings.get_boolean('layout-assistant');
                     this._controller.dragSwap = this._settings.get_boolean('drag-swap');
                     this._controller.insertionSide = this._settings.get_string('new-window-side');

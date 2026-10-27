@@ -14,7 +14,7 @@ import {PackageIdentity, packageOwner, desktopFiles} from '../src/packageIdentit
 import {applyLearning, readLearning, writeLearning, normalizedFrame, learningIdentity, uniqueLearningKey} from '../src/learning.js';
 import {processLineage} from '../src/processInfo.js';
 import {Controller} from '../src/controller.js';
-import {appIdentities, applicationIdentities, boundedIdentities, constraints, exclusion, focusBorderEligible, matchesApp, setAppException} from '../src/rules.js';
+import {appIdentities, applicationIdentities, boundedIdentities, constraints, exclusion, focusBorderEligible, isBrowserPopup, matchesApp, setAppException} from '../src/rules.js';
 import {clampRect, frameLimits} from '../src/geometry.js';
 import {Connections} from '../src/resources.js';
 import {canonicalAccelerator, Keybindings} from '../src/keybindings.js';
@@ -1406,6 +1406,59 @@ test('disabled split resize and outer edges use the existing floating fallback',
         endEast(c); clock.run(); c.stop();
     }
 });
+test('external top resize of a pinned window keeps both participants tiled and toggle recoverable', () => {
+    for (const delta of [0, 3, 32]) {
+        const {clock, adapter: a, controller: c} = setup([[1, {appId: 'browser.desktop'}], [2, {appId: 'chat.desktop'}]]);
+        c.togglePin(1); clock.run();
+        const original = {...a.read(1).rect}, neighbor = {...a.read(2).rect};
+        c.event({kind: 'grab-begin', id: 1, grab: {kind: 'resize', edges: ['north']}});
+        assert(c.resize, 'Pinned outer resize must remain managed');
+        a.windows.get(1).rect.y += delta;
+        a.windows.get(1).rect.height -= delta;
+        c.event({kind: 'geometry', id: 1}); clock.run();
+        equal(a.read(2).rect, neighbor);
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        equal(c.records.get(1).state, 'tiled'); equal(c.records.get(2).state, 'tiled');
+        assert(a.read(2).rect.width < AREA.width * 0.75, 'Neighbor must not fill the monitor');
+        equal(a.read(1).rect, delta > GAPS.inner ? {...original, y: original.y + delta, height: original.height - delta} : original);
+        const saved = JSON.stringify(c.pinnedLayouts), wanted = {...a.read(1).rect};
+        c.toggleWindow(2); clock.run(); c.toggleWindow(2); clock.run();
+        equal(a.read(1).rect, wanted); equal(c.records.get(2).state, 'tiled');
+        equal(JSON.stringify(c.pinnedLayouts), saved);
+        assert(!a.messages.some(m => m.level === 'error')); c.stop();
+    }
+});
+test('pinned external edges and corners preserve anchors, reject movement and retain monitor identity', () => {
+    const cases = [
+        [['north'], r => ({...r, y: r.y + 30, height: r.height - 30})],
+        [['west'], r => ({...r, x: r.x + 30, width: r.width - 30})],
+        [['south'], r => ({...r, height: r.height - 30})],
+        [['north', 'west'], r => ({...r, x: r.x + 30, y: r.y + 30, width: r.width - 30, height: r.height - 30})],
+        [['north'], r => ({...r, x: r.x + 30, y: r.y + 30, height: r.height - 30})],
+        [['north'], r => ({...r, y: r.y - 30, height: r.height + 30})],
+    ];
+    for (const [index, [edges, change]] of cases.entries()) {
+        const {clock, controller: c, adapter: a} = monitorSetup([[1, 0], [2, 0], [3, 1]]);
+        c.learnLayouts = false; c.togglePin(1); clock.run();
+        const original = a.read(1).rect, untouched = a.read(3).rect;
+        const monitor = c.pinnedLayouts['app-id:app1.desktop'].monitor;
+        const worker = c.owner(1), goal = {...c.pinnedLayouts['app-id:app1.desktop']};
+        let saves = 0; c.onPinnedLayouts = () => saves++;
+        c.event({kind: 'grab-begin', id: 1, grab: {kind: 'resize', edges}});
+        assert(c.resize, 'Pinned external edge must start a managed resize');
+        a.windows.get(1).rect = change(original);
+        c.event({kind: 'grab-end', id: 1}); clock.run();
+        assert(!worker.resize && !worker.learningPending);
+        equal(c.records.get(1).state, 'tiled'); equal(c.records.get(2).state, 'tiled');
+        equal(c.pinnedLayouts['app-id:app1.desktop'].monitor, monitor);
+        equal(a.read(3).rect, untouched);
+        if (index < 4) {
+            equal(a.read(1).rect, change(original)); equal(saves, 1);
+        } else { equal(a.read(1).rect, original); equal(c.pinnedLayouts['app-id:app1.desktop'], goal); equal(saves, 0); }
+        checkPlan(worker.tree, worker.adapter.area(), worker.layoutSpecs(), worker.gaps);
+        c.stop(); equal(clock.jobs.size, 0);
+    }
+});
 test('area, gaps, rules, hint and preference changes cancel resizing without undoing user geometry', () => {
     for (const change of [a => a.workarea.width -= 100,
         (a, c) => c.gaps = {inner: 12, outer: 8},
@@ -2535,6 +2588,44 @@ test('learned sizes remain effective inside the free region around a pinned appl
     equal(a.read(4).rect.width * a.read(4).rect.height, 135000);
     c.stop();
 });
+test('a bottom-left pin uses both remaining bands instead of leaving the top-left empty', () => {
+    const pinned = {'app-id:app1.desktop': {x: 0, y: 0.5, width: 0.5, height: 0.5}};
+    const {controller: c, adapter: a} = balancedSetup(4, {}, pinned);
+    const frames = [1, 2, 3, 4].map(id => a.read(id).rect);
+    equal(frames.reduce((sum, r) => sum + r.width * r.height, 0), 1200 * 900);
+    equal(a.read(1).rect, {x: 0, y: 450, width: 600, height: 450});
+    c.stop();
+});
+test('outer pin resizing reflows neighbors without learning their automatic geometry', () => {
+    const {clock, controller: c, adapter: a} = balancedSetup(4);
+    c.togglePin(1); clock.run();
+    const before = JSON.stringify(c.learnedLayouts), frame = a.read(1).rect;
+    c.event({kind: 'grab-begin', id: 1, grab: {kind: 'resize', edges: ['north']}});
+    assert(c.resize);
+    a.windows.get(1).rect = {...frame, y: frame.y + 180, height: frame.height - 180};
+    c.event({kind: 'grab-end', id: 1}); clock.run();
+    const others = Object.keys(c.learnedLayouts).filter(key => key !== 'app-id:app1.desktop');
+    equal(others, []);
+    assert(before === '{}' || before === JSON.stringify(c.learnedLayouts));
+    const coverage = [1, 2, 3, 4].reduce((sum, id) => {const r = a.read(id).rect; return sum + r.width * r.height;}, 0);
+    equal(coverage, 1200 * 900); c.stop();
+});
+test('old learned bottom-only geometry cannot leave holes beside a resized pin', () => {
+    const pinned = {'app-id:app1.desktop': {x: 0, y: 0.5, width: 0.5, height: 0.5}};
+    const learned = {'app-id:app4.desktop': {x: 0.75, y: 0.4, width: 0.25, height: 0.6}};
+    const saved = JSON.stringify(learned);
+    const {controller: c, adapter: a, clock} = balancedSetup(4, learned, pinned);
+    const coverage = () => [...c.records.values()].filter(r => r.state === 'tiled').reduce((sum, record) => {
+        const r = a.read(record.id).rect; return sum + r.width * r.height;
+    }, 0);
+    equal(coverage(), 1200 * 900);
+    equal(JSON.stringify(c.learnedLayouts), saved);
+    a.windows.delete(3); c.event({kind: 'closed', id: 3}); clock.run();
+    equal(coverage(), 1200 * 900);
+    equal(JSON.stringify(c.learnedLayouts), saved);
+    equal(a.read(1).rect, {x: 0, y: 450, width: 600, height: 450});
+    c.stop();
+});
 test('closing windows balances the remaining unsaved areas without writing learned sizes', () => {
     const {clock, adapter: a, controller: c, open} = balancedSetup();
     open(3); open(4); open(5);
@@ -2760,4 +2851,98 @@ test('a preset smaller than the native minimum cannot pin or float the source', 
     c.event({kind: 'grab-end', id: 1}); clock.run();
     equal(c.records.get(1).state, 'tiled'); equal(Object.keys(c.pinnedLayouts).length, 0); c.stop();
 });
+
+
+const browserPopupData = {appId: 'google-chrome.desktop', wmClass: 'google-chrome',
+    minWidth: 198, minHeight: 101};
+test('browser popup hints are independent of current size and reject ordinary windows and dedicated apps', () => {
+    const base = {ready: true, normal: true, ...browserPopupData};
+    assert(isBrowserPopup(base));
+    assert(isBrowserPopup({...base, rect: {width: 2000, height: 1000}}));
+    for (const change of [{minWidth: 658, minHeight: 88}, {minWidth: 1, minHeight: 1},
+        {minWidth: 0}, {minWidth: NaN}, {minHeight: 0}, {minHeight: Infinity},
+        {ready: false}, {normal: false}, {transient: true}, {skipTaskbar: true},
+        {appId: 'web-app.desktop'}, {appId: 'chatgpt.desktop'}, {wmClass: 'Electron'},
+        {wmInstance: 'crx_installed_app'}, {appId: null}]) assert(!isBrowserPopup({...base, ...change}));
+    assert(isBrowserPopup({...base, appId: 'firefox.desktop', wmClass: 'firefox', wmInstance: 'Navigator'}));
+    assert(isBrowserPopup({...base, appId: 'chromium_chromium.desktop', wmClass: 'chromium'}));
+});
+test('browser popups float by default without floating the browser and can rejoin immediately', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {...browserPopupData, minWidth: 658}],
+        [2, browserPopupData], [3, {...browserPopupData, appId: 'web-app.desktop'}]]);
+    equal(c.records.get(1).state, 'tiled'); equal(c.records.get(2).reason, 'browser-popup');
+    equal(c.records.get(3).state, 'tiled'); equal(c.floatingApps, []);
+    c.floatBrowserPopups = false; c.schedule(0); clock.run();
+    equal(c.records.get(2).state, 'tiled');
+    c.floatBrowserPopups = true; c.schedule(0); clock.run();
+    equal(c.records.get(2).reason, 'browser-popup');
+    c.toggleWindow(2); clock.run(); equal(c.records.get(2).state, 'tiled');
+    c.schedule(0); clock.run(); equal(c.records.get(2).state, 'tiled');
+    c.toggleWindow(2); clock.run();
+    c.floatBrowserPopups = false; c.schedule(0); clock.run();
+    equal(c.records.get(2).override, 'floating'); equal(c.records.get(2).state, 'floating');
+    c.stop();
+});
+test('late browser hints recover and explicit application exceptions still prevail', () => {
+    const {clock, adapter: a, controller: c} = setup([[1, {...browserPopupData, minWidth: 1, minHeight: 1}]]);
+    equal(c.records.get(1).state, 'tiled');
+    Object.assign(a.windows.get(1), browserPopupData); c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).reason, 'browser-popup');
+    a.windows.get(1).minWidth = 658; c.event({kind: 'changed', id: 1}); clock.run();
+    equal(c.records.get(1).state, 'tiled');
+    c.floatingApps = ['app-id:google-chrome.desktop']; c.schedule(0); clock.run();
+    equal(c.records.get(1).reason, 'app-exception');
+    c.floatBrowserPopups = false; c.schedule(0); clock.run();
+    equal(c.records.get(1).reason, 'app-exception'); c.stop();
+});
+test('popup preference reaches every monitor and does not move a popup to the browser pin monitor', () => {
+    const {controller: c, adapter: a, clock} = monitorSetup([[1, 0, {...browserPopupData, minWidth: 658}],
+        [2, 1, browserPopupData]]);
+    c.togglePin(1); clock.run();
+    a.add(3, {monitor: 1, domain: 'main', ...browserPopupData}); c.event({kind: 'created', id: 3}); clock.run();
+    equal(a.read(3).monitor, 1); equal(c.records.get(3).reason, 'browser-popup');
+    c.floatBrowserPopups = false; c.schedule(0); clock.run();
+    equal(c.records.get(2).state, 'tiled'); equal(c.records.get(3).state, 'tiled');
+    c.stop();
+});
+
+test('a learned whole free region yields to equal halves when a second app opens beside a pin', () => {
+    const clock = new FakeClock(), a = new FakeAdapter(clock);
+    a.workarea = {x: 0, y: 32, width: 3840, height: 1048};
+    a.add(1, {appId: 'browser.desktop', minWidth: 658});
+    a.add(2, {appId: 'chat.desktop', minWidth: 480, minHeight: 600});
+    const c = new Controller(a, clock, {inner: 15, outer: 15}); a.event = e => c.event(e);
+    c.pinnedLayouts = {'app-id:browser.desktop': {x: 0, y: 0, width: 0.5, height: 1}};
+    c.learnedLayouts = {'app-id:chat.desktop': {x: 0.5, y: 0, width: 0.5, height: 1}};
+    c.start(); clock.run(); const pin = a.read(1).rect, saved = JSON.stringify(c.learnedLayouts);
+    a.add(3, {appId: 'terminal.desktop', minWidth: 410, minHeight: 160});
+    c.event({kind: 'created', id: 3}); clock.run();
+    const chat = a.read(2).rect, terminal = a.read(3).rect;
+    assert(Math.max(chat.width * chat.height, terminal.width * terminal.height) /
+        Math.min(chat.width * chat.height, terminal.width * terminal.height) < 1.02,
+        `Free cells must share space equally instead of preserving a compressed full-region learning: ${JSON.stringify({chat, terminal})}`);
+    equal(chat.height, terminal.height); equal(a.read(1).rect, pin);
+    equal(JSON.stringify(c.learnedLayouts), saved);
+    a.windows.delete(3); c.event({kind: 'closed', id: 3}); clock.run();
+    assert(a.read(2).rect.width > chat.width && a.read(2).rect.height === chat.height);
+    equal(JSON.stringify(c.learnedLayouts), saved); c.stop();
+});
+
+test('Firefox Snap popup identity matches while normal windows, web apps and placeholder hints stay tiled', () => {
+    const popup = {appId: 'firefox_firefox.desktop', wmClass: 'firefox_firefox', wmInstance: null,
+        minWidth: 232, minHeight: 184};
+    const {clock, controller: c, adapter: a} = setup([[1, {...popup, minWidth: 552, minHeight: 172}],
+        [2, popup], [3, {...popup, minWidth: 1, minHeight: 1}],
+        [4, {...popup, appId: 'firefox-webapp.desktop'}], [5, {...popup, wmInstance: 'custom-web-app'}]]);
+    equal(c.records.get(2).reason, 'browser-popup');
+    for (const id of [1, 3, 4, 5]) equal(c.records.get(id).state, 'tiled');
+    c.floatBrowserPopups = false; c.schedule(0); clock.run();
+    equal(c.records.get(2).state, 'tiled');
+    c.floatBrowserPopups = true; c.schedule(0); clock.run();
+    equal(c.records.get(2).reason, 'browser-popup');
+    Object.assign(a.windows.get(3), popup); c.event({kind: 'changed', id: 3}); clock.run();
+    equal(c.records.get(3).reason, 'browser-popup');
+    equal(c.floatingApps, []); c.stop();
+});
+
 print(`\n${passed} tests passed. Pure GJS tests: no compositor, D-Bus session or window mutation.`);

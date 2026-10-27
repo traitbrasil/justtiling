@@ -23,6 +23,28 @@ export function isNautilusAuxiliary(data) {
         data.gtkWindowPath === null;
 }
 
+// A conservative, self-only heuristic: use native size hints, never current
+// geometry, titles, URLs, process ancestry or another window's identity.
+const POPUP_BROWSERS = new Map([
+    ['google-chrome.desktop', ['google-chrome']],
+    ['chromium.desktop', ['chromium', 'chromium-browser']],
+    ['chromium-browser.desktop', ['chromium', 'chromium-browser']],
+    ['chromium_chromium.desktop', ['chromium', 'chromium-browser']],
+    ['firefox.desktop', ['firefox', 'navigator']],
+    ['firefox_firefox.desktop', ['firefox_firefox', 'firefox', 'navigator']],
+    ['org.mozilla.firefox.desktop', ['firefox', 'navigator']],
+]);
+export function isBrowserPopup(data) {
+    if (!data?.ready || !data.normal || data.transient || data.overrideRedirect || data.skipTaskbar) return false;
+    const classes = POPUP_BROWSERS.get(data.appId);
+    if (!classes?.includes(data.wmClass?.toLowerCase())) return false;
+    // Dedicated web apps and --app windows may use a different WM instance.
+    if (data.wmInstance && !classes.includes(data.wmInstance.toLowerCase())) return false;
+    const {minWidth: width, minHeight: height} = data;
+    return Number.isFinite(width) && Number.isFinite(height) &&
+        width >= 100 && width <= 240 && height >= 50 && height <= 200;
+}
+
 // Highlighting is independent of tiling eligibility and application identity.
 // Only actual focused application windows qualify, not desktop chrome or popups.
 export function focusBorderEligible(data) {

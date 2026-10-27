@@ -54,20 +54,27 @@ export function beginResize(tree, id, edges, frame, area, specs, gaps) {
         specs: new Map(specs), plan, targets};
 }
 
+// Validate native edge movement independently of the BSP. Pinned outer edges
+// can reserve a new rectangle even when no shared split exists at that edge.
+export function anchoredResize(original, frame, edges) {
+    if (!original || !frame || !Array.isArray(edges) || !edges.length || edges.length > 2 ||
+        edges.some(edge => !edgeInfo[edge]) ||
+        new Set(edges.map(edge => edgeInfo[edge].axis)).size !== edges.length ||
+        !['x', 'y', 'width', 'height'].every(k => Number.isFinite(frame[k])) ||
+        frame.width <= 0 || frame.height <= 0) return false;
+    for (const [axis, dim] of [['x', 'width'], ['y', 'height']]) {
+        const info = edges.map(edge => edgeInfo[edge]).find(edge => edge.axis === axis);
+        if (info ? !close(info.far ? frame[axis] : frame[axis] + frame[dim],
+            info.far ? original[axis] : original[axis] + original[dim]) :
+            !close(frame[axis], original[axis]) || !close(frame[dim], original[dim])) return false;
+    }
+    return true;
+}
+
 export function finishResize(context, frame) {
-    if (!context || !frame || !['x', 'y', 'width', 'height'].every(k => Number.isFinite(frame[k])) ||
-        frame.width <= 0 || frame.height <= 0) return null;
+    if (!context || !anchoredResize(context.frame, frame, context.targets.map(t => t.edge))) return null;
     const {tree, area, specs, gaps, targets} = context;
     const original = context.frame;
-    const x = targets.find(t => t.info.axis === 'x');
-    const y = targets.find(t => t.info.axis === 'y');
-    // The opposite edges must stay anchored; movement or native snap is not a split resize.
-    if (x ? !close(x.info.far ? frame.x : frame.x + frame.width,
-        x.info.far ? original.x : original.x + original.width) :
-        !close(frame.x, original.x) || !close(frame.width, original.width)) return null;
-    if (y ? !close(y.info.far ? frame.y : frame.y + frame.height,
-        y.info.far ? original.y : original.y + original.height) :
-        !close(frame.y, original.y) || !close(frame.height, original.height)) return null;
     if (sameRect(frame, original, 1)) return {tree, plan: context.plan};
     let next = tree;
     for (const target of targets) {

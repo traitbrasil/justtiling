@@ -3,7 +3,7 @@ import {ids, solve} from './tree.js';
 
 // Equal window counts on each branch yield equal areas even in an asymmetric
 // BSP. Native minimum and maximum sizes remain the solver's responsibility.
-export function balancedLayout(tree, area = null, specs = null, gaps = null) {
+export function balancedLayout(tree, area = null, specs = null, gaps = null, preferLandscape = false) {
     function visit(node) {
         if (!node || node.empty) return {tree: node, count: 0};
         if ('id' in node) return {tree: node, count: 1};
@@ -12,24 +12,39 @@ export function balancedLayout(tree, area = null, specs = null, gaps = null) {
     }
     let best = visit(tree).tree;
     if (!area || !specs || !best) return best;
-    let plan = solve(best, area, specs, gaps);
-    if (!plan) return best;
-    let score = quality(plan);
-    // Reorient boundedly when minimum sizes would otherwise squeeze an entire
-    // free region. Keep window order and change only improving divisions.
-    for (let pass = 0; pass < 3; pass++) {
-        let chosen = null;
-        for (const candidate of alternatives(best)) {
-            plan = solve(candidate, area, specs, gaps);
-            if (!plan) continue;
-            const value = quality(plan);
-            if (value < score - 1e-8) { chosen = candidate; score = value; }
+    const candidates = [best];
+    if (preferLandscape) {
+        // Rebuild grouping as well as orientation: an insertion chain may not
+        // admit balanced, wide cells through split rotations alone.
+        const rebuild = keys => keys.length === 1 ? {id: keys[0]} : {
+            axis: 'x', ratio: Math.floor(keys.length / 2) / keys.length,
+            a: rebuild(keys.slice(0, Math.floor(keys.length / 2))),
+            b: rebuild(keys.slice(Math.floor(keys.length / 2))),
+        };
+        const keys = ids(tree);
+        if (keys.length > 1) candidates.push(rebuild(keys));
+    }
+    let bestScore = Infinity;
+    for (let candidate of candidates) {
+        const initial = solve(candidate, area, specs, gaps);
+        if (!initial) continue;
+        let score = quality(initial, preferLandscape);
+        for (let pass = 0; pass < 3; pass++) {
+            let chosen = null;
+            for (const variant of alternatives(candidate)) {
+                const plan = solve(variant, area, specs, gaps);
+                if (!plan) continue;
+                const value = quality(plan, preferLandscape);
+                if (value < score - 1e-8) { chosen = variant; score = value; }
+            }
+            if (!chosen) break;
+            candidate = chosen;
         }
-        if (!chosen) break;
-        best = chosen;
+        if (score < bestScore - 1e-8) { best = candidate; bestScore = score; }
     }
     return best;
 }
+
 function alternatives(node) {
     if (!node || node.empty || 'id' in node) return [];
     return [{...node, axis: node.axis === 'x' ? 'y' : 'x'},
@@ -41,12 +56,14 @@ function replace(tree, id, next) {
     if ('id' in tree) return tree.id === id ? next : tree;
     return {...tree, a: replace(tree.a, id, next), b: replace(tree.b, id, next)};
 }
-function quality(plan) {
+function quality(plan, preferLandscape = false) {
     const frames = [...plan.frames.values()], areas = frames.map(r => r.width * r.height);
     const mean = areas.reduce((a, b) => a + b, 0) / areas.length;
     const imbalance = areas.reduce((sum, value) => sum + ((value - mean) / mean) ** 2, 0) / areas.length;
     const shape = frames.reduce((sum, r) => sum + Math.log(r.width / r.height / 1.6) ** 2, 0) / frames.length;
-    return imbalance + shape * 0.02 + portraitPenalty(plan);
+    const landscape = preferLandscape ? frames.reduce((sum, r) =>
+        sum + Math.max(0, r.height / r.width - 1) ** 2, 0) / frames.length : 0;
+    return imbalance + shape * 0.02 + portraitPenalty(plan) + landscape;
 }
 export function insertBalanced(tree, id, specs, area, gaps, focus = null, side = 'right', preferOthers = true) {
     if (!['left', 'right'].includes(side)) return null;

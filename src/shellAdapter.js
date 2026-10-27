@@ -182,6 +182,7 @@ export class ShellAdapter {
             const info = {
                 event, id: win.get_stable_sequence(), pid, lineage,
                 wmClass: win.get_wm_class(), wmInstance: win.get_wm_class_instance(),
+                role: win.get_role(), clientType: win.get_client_type(), frameType: win.get_frame_type(),
                 gtkAppId: win.get_gtk_application_id(), sandboxId: win.get_sandboxed_app_id(),
                 gtkBusName: win.get_gtk_unique_bus_name(),
                 gtkApplicationPath: win.get_gtk_application_object_path(),

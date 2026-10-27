@@ -22,7 +22,8 @@ CAPTURE_PREFIX = '[justtiling] Window capture '
 CAPTURE_FIELDS = {'event', 'id', 'pid', 'lineage', 'wmClass', 'wmInstance', 'gtkAppId',
                   'sandboxId', 'gtkBusName', 'gtkApplicationPath', 'gtkWindowPath',
                   'appId', 'windowBacked', 'transientFor', 'type', 'mapped', 'skipTaskbar',
-                  'overrideRedirect', 'resizable', 'above', 'frame', 'minimum', 'maximum'}
+                  'overrideRedirect', 'resizable', 'above', 'frame', 'minimum', 'maximum',
+                  'role', 'clientType', 'frameType'}
 
 
 def capture_records(journal, shell_executable, uid):
@@ -66,8 +67,8 @@ def capture(installed, output, seconds):
     interrupted = False
     try:
         run([*command, 'set', SCHEMA, 'debug', 'true'])
-        print(f'Captura por {seconds} segundos. Aperte Caps Lock para mostrar e ocultar o aviso.', flush=True)
-        print('Você também pode abrir a janela principal e outras janelas auxiliares nesse intervalo.', flush=True)
+        print(f'Captura por {seconds} segundos. Abra a janela que deseja investigar e mantenha-a aberta até terminar.', flush=True)
+        print('Mantenha a janela principal aberta também, para comparação. Não é necessário concluir o login.', flush=True)
         time.sleep(seconds)
     except KeyboardInterrupt:
         interrupted = True

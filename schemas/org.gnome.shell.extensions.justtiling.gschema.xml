@@ -9,6 +9,10 @@
       <default>true</default>
       <summary>Manage windows while the extension is loaded</summary>
     </key>
+    <key name="float-browser-popups" type="b">
+      <default>true</default>
+      <summary>Float likely browser pop-ups identified by native minimum size hints</summary>
+    </key>
     <key name="layout-assistant" type="b">
       <default>true</default>
       <summary>Show optional layout presets during native window dragging</summary>

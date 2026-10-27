@@ -104,11 +104,15 @@ The border is hidden for maximized and fullscreen windows, minimized or unmapped
 
 Arrange a tiled window at the position and size you prefer, then enable **Pin this application's position and size** in the panel menu or press **Super+Y**. A notification confirms pinning or unpinning, including when using a customized shortcut. Other windows use the remaining regions. This explicit preference takes priority over focus preservation and learned layouts, and works with layout learning disabled.
 
-When application minimum sizes prevent an exact reservation, the pinned window yields space temporarily. Closing windows restores its saved region when possible. Automatic adjustments never overwrite the saved preference. Manual split resizing or swapping updates the affected pinned window's saved region after the layout settles.
+When application minimum sizes prevent an exact reservation, the pinned window yields space temporarily. Closing windows restores its saved region when possible. Automatic adjustments never overwrite the saved preference. Manual split resizing or swapping updates the affected pinned window's saved region after the layout settles. Resizing an external edge of the pinned window also keeps it in the grid and saves the new region when it fits. If that region falls outside the usable area or cannot fit alongside the other windows, the previous region is restored instead of switching the application to floating.
 
 Pins are stored locally by application, as proportions of the work area together with the preferred monitor, and survive reopening and session restarts. Reopened windows prefer that monitor; if it is disconnected, they use the primary monitor without erasing the saved destination. On any other monitor, the saved pin does not reserve space or enforce its proportions: the window participates in that monitor’s normal adaptive grid. The saved region applies again when the window is on its preferred monitor. Manual moves after opening remain possible. Pins saved before monitor preferences were supported keep their existing behavior; unpin and pin once on the desired monitor to save it. One tiled instance per application reserves space on each workspace; additional instances tile normally. Floating exceptions, manual floating, minimization and maximization take precedence while active, without deleting the saved pin. Rejoining the grid applies it again.
 
 Toggle the menu option or shortcut to unpin, or remove one or all pins in **Preferences → Pinned applications**. The list starts collapsed. **Preferences → Keyboard shortcuts** allows changing the default Super+Y shortcut; occupied shortcuts are reported instead of replacing system bindings. Empty reserved regions are never numbered swap targets.
+
+If a learned size cannot coexist with the other windows in a free region, that region falls back to balanced areas and prefers wide window shapes when minimum sizes allow. The original learned size can apply again after windows close.
+
+When a pinned region changes, the other windows are redistributed across the remaining usable regions. Their automatic adjustments are not recorded as manual learning. Saved learning can yield temporarily if applying it would leave substantial usable space empty; the stored preference is preserved.
 
 ## Balanced automatic layouts
 
@@ -135,3 +139,9 @@ Only the selected application is pinned. Other windows keep using the normal ada
 Regions that cannot accommodate the application's size limits or overlap another application's fixed region are unavailable. Releasing on an unavailable region or an empty part of the palette returns the window to the grid without modifying pins. Esc cancels the native drag. Leaving the palette keeps the usual swap preview. Releasing over a compatible window swaps them; releasing without a valid destination restores the original grid position and size, including for a sole window filling the work area. Pins and learning remain unchanged on cancellation; the palette never captures keyboard or pointer input. The palette can be disabled independently of drag swapping, and works when drag swapping is disabled.
 
 The palette and destination preview disappear when dragging ends, tiling pauses, the overview or lock screen opens, or the extension is disabled. The assistant adjusts only the chosen window's pin when explicitly dropped on a valid region; hovering does not change geometry or stored preferences.
+
+## Browser pop-ups
+
+**Float browser pop-ups** is enabled by default in Preferences. It detects likely Chrome, Chromium and Firefox pop-ups using the browser's exact application/class identity and small native minimum size hints (width 100–240, height 50–200), independently of current window size. Placeholder or missing hints do not match. Dedicated web app identities and custom WM instances are excluded. No URLs, titles or page contents are read, and this never adds a persistent application-wide floating exception.
+
+This is a heuristic: browser versions, themes or unusual windows can change these hints. Turn the option off if a normal window is misidentified; automatically floated pop-ups rejoin the grid. A manual toggle to tiled remains respected, as do explicit floating exceptions. Firefox installations from Snap are recognized using their package-specific window class as well.

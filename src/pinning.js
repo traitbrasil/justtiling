@@ -41,6 +41,7 @@ function reserve(tree, goals, desired, area, specs, gap, budget, remainder, dept
     if (!inside(rect, area)) return null;
     const others = ids(tree).filter(key => key !== id);
     if (!others.length && sameRect(rect, area)) return {id};
+    let best = null, coverage = -1, quality = Infinity;
     for (const axis of ['x', 'y']) {
         const dim = axis === 'x' ? 'width' : 'height', cross = axis === 'x' ? 'y' : 'x';
         const span = axis === 'x' ? 'height' : 'width';
@@ -94,10 +95,20 @@ function reserve(tree, goals, desired, area, specs, gap, budget, remainder, dept
             if (trailing) next = split(axis, rect[dim], rect[dim] + trailing, gap, next, branches.get('trailing'));
             if (leading) next = split(axis, leading - gap, area[dim], gap, branches.get('leading'), next);
             const plan = solve(next, area, specs, {inner: gap, outer: 0});
-            if (plan && [...goals].every(([key]) => sameRect(plan.frames.get(key), desired.get(key), 1))) return next;
+            if (!plan || ![...goals].every(([key]) => sameRect(plan.frames.get(key), desired.get(key), 1))) continue;
+            // A feasible single band may leave another large band empty. Compare
+            // both cut orientations and the distributed placement before choosing.
+            const free = [...plan.frames].filter(([key]) => !goals.has(key)).map(([, r]) => r);
+            const used = [...plan.frames.values()].reduce((sum, r) => sum + r.width * r.height, 0);
+            const mean = free.reduce((sum, r) => sum + r.width * r.height, 0) / Math.max(1, free.length);
+            const score = free.reduce((sum, r) => sum + ((r.width * r.height - mean) / Math.max(1, mean)) ** 2 +
+                Math.log(r.width / r.height / 1.6) ** 2 * 0.02, 0);
+            if (used > coverage || (used === coverage && score < quality - 1e-8)) {
+                best = next; coverage = used; quality = score;
+            }
         }
     }
-    return null;
+    return best;
 }
 
 export function pinnedLayout(tree, goals, area, specs, gaps, remainder = null) {

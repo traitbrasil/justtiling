@@ -2,10 +2,10 @@
 import {Controller} from './controller.js';
 import {MonitorAdapter} from './monitorAdapter.js';
 import {learningMatch} from './learning.js';
-import {exclusion, matchesApp} from './rules.js';
+import {exclusion, isBrowserPopup, matchesApp} from './rules.js';
 
 const SETTINGS = ['gaps', 'floatingApps', 'pinnedLayouts', 'learnedLayouts', 'learnLayouts',
-    'debug', 'resizeSplits', 'dragSwap', 'layoutAssistant', 'insertionSide', 'preserveFocusedWindow'];
+    'debug', 'floatBrowserPopups', 'resizeSplits', 'dragSwap', 'layoutAssistant', 'insertionSide', 'preserveFocusedWindow'];
 const INTERACTION = ['assistantVisible', 'assistantReady', 'learningPending'];
 
 // One engine per monitor, each retaining its existing independent workspace
@@ -114,7 +114,8 @@ export class Monitors {
                 this.placed.add(id);
                 const saved = key && this.pinnedLayouts[key].monitor;
                 if (!saved || exclusion({...data, resizable: data.maximized ? true : data.resizable}) || matchesApp(data, this.floatingApps ?? []) ||
-                    record?.override === 'floating') continue;
+                    record?.override === 'floating' ||
+                    (record?.override !== 'tiled' && this.floatBrowserPopups && isBrowserPopup(data))) continue;
                 const target = this.adapter.preferredMonitor?.(saved) ??
                     (saved.index < this.adapter.monitorCount() ? saved.index : this.adapter.primaryMonitor?.() ?? 0);
                 if (target !== data.monitor) this.adapter.moveToMonitor?.(id, target);
